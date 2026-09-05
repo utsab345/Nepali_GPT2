@@ -1,154 +1,144 @@
-import os
-import math
-import time
-import random
+"""Train a NepaliGPT model from the cached token array.
+
+Generates ``ckpt/best.pt`` (lowest validation loss) and periodic
+crash-recovery checkpoints, plus a training-loss plot in ``loss.png``.
+"""
+
+from __future__ import annotations
+
 import argparse
+import math
+import random
+import sys
+import time
+from pathlib import Path
+
 import numpy as np
 import torch
 import torch.nn as nn
-from pathlib import Path
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 
+from nepali_gpt2.config import MODEL_CONFIGS, TRAIN_DEFAULTS
+from nepali_gpt2.data import TokenDataset, eval_loss
 from nepali_gpt2.model import NepaliGPT
 
 
+def make_lr_fn(
+    lr: float,
+    warmup: int,
+    total_steps: int,
+    min_lr_ratio: float,
+):
+    """Return a warmup-then-cosine-decay learning rate schedule."""
 
-DEFAULTS = dict(
-    token_cache  = "data/tokens.npy",
-    ckpt_dir     = "ckpt",
-    model_size   = "base",        
-    epochs       = 10,
-    max_steps    = 15_000,
-    batch_size   = 32,
-    lr           = 5e-4,
-    min_lr_ratio = 0.1,            
-    weight_decay = 0.1,
-    grad_clip    = 1.0,
-    warmup_steps = 500,
-    eval_every   = 500,
-    eval_batches = 100,
-    save_every   = 5_000,
-    seed         = 42,
-)
-
-
-
-class TokenDataset(Dataset):
-    def __init__(self, data: np.ndarray, ctx: int):
-        self.data = data
-        self.ctx  = ctx
-
-    def __len__(self):
-        return len(self.data) - self.ctx
-
-    def __getitem__(self, i):
-        x = torch.from_numpy(self.data[i     : i + self.ctx    ].astype(np.int64))
-        y = torch.from_numpy(self.data[i + 1 : i + self.ctx + 1].astype(np.int64))
-        return x, y
-
-
-
-def make_lr_fn(lr, warmup, total_steps, min_lr_ratio):
-    def lr_schedule(step):
+    def lr_schedule(step: int) -> float:
         if step < warmup:
             return lr * (step + 1) / warmup
         t = (step - warmup) / max(1, total_steps - warmup)
         cosine = 0.5 * (1 + math.cos(math.pi * t))
         return lr * (min_lr_ratio + (1 - min_lr_ratio) * cosine)
+
     return lr_schedule
 
 
+def build_optimizer(
+    model: nn.Module,
+    lr: float,
+    weight_decay: float,
+) -> torch.optim.AdamW:
+    """AdamW with weight decay applied to 2-D parameters only."""
+    decay = [p for n, p in model.named_parameters() if p.dim() >= 2]
+    no_decay = [p for n, p in model.named_parameters() if p.dim() < 2]
+    return torch.optim.AdamW(
+        [
+            {"params": decay, "weight_decay": weight_decay},
+            {"params": no_decay, "weight_decay": 0.0},
+        ],
+        lr=lr,
+        betas=(0.9, 0.95),
+    )
 
-@torch.no_grad()
-def eval_loss(model, loader, device, max_batches, use_amp):
-    model.eval()
-    total = count = 0
-    for i, (x, y) in enumerate(loader):
-        if i >= max_batches:
-            break
-        x, y = x.to(device), y.to(device)
-        with torch.amp.autocast("cuda", enabled=use_amp):
-            _, loss = model(x, y)
-        total += loss.item()
-        count += 1
-    model.train()
-    return total / max(count, 1)
+
+def seed_everything(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
-
-def train(args):
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+def train(args: argparse.Namespace) -> None:
+    seed_everything(args.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device : {device}")
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(args.seed)
+        props = torch.cuda.get_device_properties(0)
         print(f"GPU    : {torch.cuda.get_device_name(0)}")
-        print(f"VRAM   : {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+        print(f"VRAM   : {props.total_memory / 1e9:.1f} GB")
 
-    import sentencepiece as spm
-    sp = spm.SentencePieceProcessor()
-    sp.load("tokenizer/nepali_bpe.model")
-    PAD_ID = sp.pad_id()  # 0
+    cfg_dict = MODEL_CONFIGS[args.model_size]
+    ctx = cfg_dict["context_length"]
 
+    # Token cache produced by data_prep.py.
     token_cache = Path(args.token_cache)
-    assert token_cache.exists(), f"Token cache not found: {token_cache}\nRun data_prep.py first."
+    if not token_cache.exists():
+        raise FileNotFoundError(
+            f"Token cache not found: {token_cache}\nRun data_prep.py first."
+        )
     arr = np.memmap(token_cache, dtype=np.int32, mode="r")
     print(f"Token array: {len(arr):,} tokens")
 
-    cfg_dict = NepaliGPT.CONFIGS[args.model_size]
-    CTX   = cfg_dict["context_length"]
-
-    split      = int(0.95 * len(arr))
-    train_ds   = TokenDataset(arr[:split], CTX)
-    val_ds     = TokenDataset(arr[split:], CTX)
-
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
-                              num_workers=2, pin_memory=True, drop_last=True)
-    val_loader   = DataLoader(val_ds,   batch_size=args.batch_size, shuffle=False,
-                              num_workers=2, pin_memory=True, drop_last=False)
-
+    # Hold-out 5% of the corpus for validation.
+    split = int(0.95 * len(arr))
+    train_loader = DataLoader(
+        TokenDataset(arr[:split], ctx),
+        batch_size=args.batch_size, shuffle=True,
+        num_workers=2, pin_memory=True, drop_last=True,
+    )
+    val_loader = DataLoader(
+        TokenDataset(arr[split:], ctx),
+        batch_size=args.batch_size, shuffle=False,
+        num_workers=2, pin_memory=True, drop_last=False,
+    )
     print(f"Train batches : {len(train_loader):,}  |  Val batches : {len(val_loader):,}")
 
     model = NepaliGPT(cfg_dict).to(device)
     print(f"Parameters    : {model.num_params() / 1e6:.2f} M")
-    print(f"Config        : {cfg_dict}")
 
-    USE_COMPILE = hasattr(torch, "compile") and torch.cuda.is_available()
-    if USE_COMPILE:
+    if hasattr(torch, "compile") and torch.cuda.is_available():
         model = torch.compile(model)
-        print("torch.compile applied ✓")
+        print("torch.compile applied")
 
-    decay    = [p for n, p in model.named_parameters() if p.dim() >= 2]
-    no_decay = [p for n, p in model.named_parameters() if p.dim() <  2]
-    optimizer = torch.optim.AdamW(
-        [
-            {"params": decay,    "weight_decay": args.weight_decay},
-            {"params": no_decay, "weight_decay": 0.0},
-        ],
-        lr=args.lr,
-        betas=(0.9, 0.95),
-    )
-
-    lr_fn    = make_lr_fn(args.lr, args.warmup_steps, args.max_steps, args.min_lr_ratio)
-    use_amp  = torch.cuda.is_available()
-    scaler   = torch.amp.GradScaler("cuda", enabled=use_amp)
-
+    optimizer = build_optimizer(model, args.lr, args.weight_decay)
+    lr_fn = make_lr_fn(args.lr, args.warmup_steps, args.max_steps, args.min_lr_ratio)
+    use_amp = torch.cuda.is_available()
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
     ckpt_dir = Path(args.ckpt_dir)
     ckpt_dir.mkdir(exist_ok=True)
 
-    # Training 
+    def save_checkpoint(path: Path, step: int, val_loss: float) -> None:
+        torch.save(
+            {
+                "step": step,
+                "model": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "val_loss": val_loss,
+                "cfg": cfg_dict,
+            },
+            path,
+        )
+
     train_losses, val_losses, steps_logged = [], [], []
-    global_step = 0
-    best_val    = float("inf")
+    global_step, best_val = 0, float("inf")
 
     model.train()
     t0 = time.time()
-    print(f"\nTraining up to {args.max_steps:,} steps "
-          f"(eval every {args.eval_every}, {args.eval_batches} val batches)\n")
+    print(
+        f"\nTraining up to {args.max_steps:,} steps "
+        f"(eval every {args.eval_every}, {args.eval_batches} val batches)\n"
+    )
 
     for epoch in range(1, args.epochs + 1):
         for x, y in train_loader:
@@ -174,7 +164,7 @@ def train(args):
             global_step += 1
 
             if global_step % args.eval_every == 0 or global_step == 1:
-                v_loss = eval_loss(model, val_loader,   device, args.eval_batches, use_amp)
+                v_loss = eval_loss(model, val_loader, device, args.eval_batches, use_amp)
                 t_loss = eval_loss(model, train_loader, device, args.eval_batches, use_amp)
 
                 train_losses.append(t_loss)
@@ -190,29 +180,11 @@ def train(args):
 
                 if v_loss < best_val:
                     best_val = v_loss
-                    torch.save(
-                        {
-                            "step": global_step,
-                            "model": model.state_dict(),
-                            "optimizer": optimizer.state_dict(),
-                            "val_loss": v_loss,
-                            "cfg": cfg_dict,
-                        },
-                        ckpt_dir / "best.pt",
-                    )
-                    print(f"  ★ best model saved (val={v_loss:.4f})")
+                    save_checkpoint(ckpt_dir / "best.pt", global_step, v_loss)
+                    print(f"  best model saved (val={v_loss:.4f})")
 
             if global_step % args.save_every == 0:
-                torch.save(
-                    {
-                        "step": global_step,
-                        "model": model.state_dict(),
-                        "optimizer": optimizer.state_dict(),
-                        "val_loss": best_val,
-                        "cfg": cfg_dict,
-                    },
-                    ckpt_dir / f"step_{global_step:06d}.pt",
-                )
+                save_checkpoint(ckpt_dir / f"step_{global_step:06d}.pt", global_step, best_val)
                 print(f"  [checkpoint saved at step {global_step}]")
 
         if global_step >= args.max_steps:
@@ -222,24 +194,40 @@ def train(args):
     print(f"\nDone! Best val loss: {best_val:.4f} | Time: {elapsed:.1f}m")
 
     import matplotlib.pyplot as plt
+
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(steps_logged, train_losses, label="Train", color="steelblue")
-    ax.plot(steps_logged, val_losses,   label="Val",   color="tomato")
-    ax.set_xlabel("Step"); ax.set_ylabel("Loss")
+    ax.plot(steps_logged, val_losses, label="Val", color="tomato")
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Loss")
     ax.set_title("NepaliGPT — Training Loss")
-    ax.legend(); ax.grid(alpha=0.3)
+    ax.legend()
+    ax.grid(alpha=0.3)
     plt.tight_layout()
     plt.savefig("loss.png", dpi=120)
     print("Loss curve saved → loss.png")
 
 
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Train NepaliGPT",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    p.add_argument("--model-size", default=TRAIN_DEFAULTS["model_size"],
+                   choices=sorted(MODEL_CONFIGS), help="architecture preset")
+    for key in TRAIN_DEFAULTS:
+        if key == "model_size":
+            continue
+        p.add_argument(f"--{key.replace('_', '-')}", type=type(TRAIN_DEFAULTS[key]),
+                       default=TRAIN_DEFAULTS[key])
+    return p.parse_args(argv)
 
-def parse_args():
-    p = argparse.ArgumentParser(description="Train NepaliGPT")
-    for k, v in DEFAULTS.items():
-        p.add_argument(f"--{k}", type=type(v), default=v)
-    return p.parse_args()
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI wrapper: parse arguments and run the training loop."""
+    train(parse_args(argv))
+    return 0
 
 
 if __name__ == "__main__":
-    train(parse_args())
+    sys.exit(main())

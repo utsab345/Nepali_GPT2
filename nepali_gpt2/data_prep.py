@@ -1,35 +1,49 @@
-import os
-import json
+"""Build the Nepali training corpus and train a SentencePiece tokenizer.
+
+Pipeline (all outputs cached, re-running is a no-op):
+
+1. Download Nepali Wikipedia (~200k articles) from HuggingFace
+2. Download the OSCAR Nepali corpus (~500k lines) from Kaggle
+3. Merge both into ``data/nepali_corpus.txt``
+4. Train a 16k-vocab SentencePiece BPE tokenizer
+5. Tokenize and cache all tokens as ``data/tokens.npy``
+"""
+
+from __future__ import annotations
+
 import glob
-import zipfile
+import json
+import os
 import subprocess
-import numpy as np
-import sentencepiece as spm
+import zipfile
 from pathlib import Path
 
-DATA_DIR    = Path("data")
-TOK_DIR     = Path("tokenizer")
-TOK_PREFIX  = str(TOK_DIR / "nepali_bpe")
+import numpy as np
+import sentencepiece as spm
+
+DATA_DIR = Path("data")
+TOK_DIR = Path("tokenizer")
+TOK_PREFIX = str(TOK_DIR / "nepali_bpe")
 CORPUS_FILE = DATA_DIR / "nepali_corpus.txt"
 TOKEN_CACHE = DATA_DIR / "tokens.npy"
 
-WIKI_FILE   = DATA_DIR / "wiki_ne.txt"
-WEB_FILE    = DATA_DIR / "web_ne.txt"
+WIKI_FILE = DATA_DIR / "wiki_ne.txt"
+WEB_FILE = DATA_DIR / "web_ne.txt"
 
-VOCAB_SIZE       = 16_000
-WIKI_MAX_LINES   = 200_000
-OSCAR_MAX_LINES  = 500_000
-TOKENIZE_CHUNK   = 2_000_000
+VOCAB_SIZE = 16_000
+WIKI_MAX_LINES = 200_000
+OSCAR_MAX_LINES = 500_000
+TOKENIZE_CHUNK = 2_000_000
 
 
-def setup_dirs():
+def setup_dirs() -> None:
     DATA_DIR.mkdir(exist_ok=True)
     TOK_DIR.mkdir(exist_ok=True)
 
 
-#  Wikipedia 
+# ---- Wikipedia -----------------------------------------------------------
 
-def download_wikipedia():
+def download_wikipedia() -> None:
     """Download Nepali Wikipedia via HuggingFace datasets (streaming)."""
     if WIKI_FILE.exists():
         print("Wikipedia corpus already downloaded ✓")
@@ -52,10 +66,11 @@ def download_wikipedia():
     with open(WIKI_FILE, "w", encoding="utf-8") as f:
         for row in ds:
             text = row.get("text", "").strip()
-            if text:
-                f.write(text + "\n")
-                written += 1
-            if written % 50_000 == 0 and written > 0:
+            if not text:
+                continue
+            f.write(text + "\n")
+            written += 1
+            if written % 50_000 == 0:
                 print(f"  Wikipedia: {written:,} articles")
             if written >= WIKI_MAX_LINES:
                 break
@@ -63,10 +78,10 @@ def download_wikipedia():
     print(f"Wikipedia corpus saved → {WIKI_FILE}  ({written:,} articles)")
 
 
-#  OSCAR corpus 
+# ---- OSCAR web corpus ----------------------------------------------------
 
-def download_oscar():
-    """Download OSCAR Nepali corpus from Kaggle (requires credentials)."""
+def download_oscar() -> None:
+    """Download the OSCAR Nepali corpus from Kaggle (requires credentials)."""
     if WEB_FILE.exists():
         print("OSCAR corpus already downloaded ✓")
         return
@@ -91,9 +106,9 @@ def download_oscar():
         print("Extraction complete ✓")
 
     txt_files = sorted(
-        glob.glob(str(oscar_dir / "**" / "*.txt"), recursive=True) +
-        glob.glob(str(oscar_dir / "**" / "*.jsonl"), recursive=True) +
-        glob.glob(str(oscar_dir / "*.txt"), recursive=False)
+        glob.glob(str(oscar_dir / "**" / "*.txt"), recursive=True)
+        + glob.glob(str(oscar_dir / "**" / "*.jsonl"), recursive=True)
+        + glob.glob(str(oscar_dir / "*.txt"), recursive=False)
     )
     print(f"Found {len(txt_files)} file(s): {[Path(p).name for p in txt_files]}")
 
@@ -102,45 +117,37 @@ def download_oscar():
         for fpath in txt_files:
             if written >= OSCAR_MAX_LINES:
                 break
-            if fpath.endswith(".jsonl"):
-                with open(fpath, encoding="utf-8") as in_f:
-                    for line in in_f:
-                        if written >= OSCAR_MAX_LINES:
-                            break
+            is_jsonl = fpath.endswith(".jsonl")
+            with open(fpath, encoding="utf-8") as in_f:
+                for line in in_f:
+                    if written >= OSCAR_MAX_LINES:
+                        break
+                    if is_jsonl:
                         try:
-                            obj  = json.loads(line)
-                            text = obj.get("text", "").strip()
+                            text = json.loads(line).get("text", "").strip()
                         except Exception:
                             text = line.strip()
-                        if len(text) > 30:
-                            out_f.write(text + "\n")
-                            written += 1
-                            if written % 100_000 == 0:
-                                print(f"  OSCAR: {written:,}")
-            else:
-                with open(fpath, encoding="utf-8") as in_f:
-                    for line in in_f:
-                        if written >= OSCAR_MAX_LINES:
-                            break
+                    else:
                         text = line.strip()
-                        if len(text) > 30:
-                            out_f.write(text + "\n")
-                            written += 1
-                            if written % 100_000 == 0:
-                                print(f"  OSCAR: {written:,}")
+                    if len(text) > 30:
+                        out_f.write(text + "\n")
+                        written += 1
+                        if written % 100_000 == 0:
+                            print(f"  OSCAR: {written:,}")
 
     print(f"OSCAR corpus saved → {WEB_FILE}  ({written:,} lines)")
 
 
-# Merge 
+# ---- Merge ---------------------------------------------------------------
 
-def merge_corpora():
+def merge_corpora() -> None:
     if CORPUS_FILE.exists():
         print("Merged corpus already exists ✓")
         return
 
-    files = [f for f in [WIKI_FILE, WEB_FILE] if f.exists()]
-    assert files, "No corpus files found — run download steps first."
+    files = [f for f in (WIKI_FILE, WEB_FILE) if f.exists()]
+    if not files:
+        raise FileNotFoundError("No corpus files found — run download steps first.")
 
     with open(CORPUS_FILE, "w", encoding="utf-8") as out:
         for f in files:
@@ -151,7 +158,7 @@ def merge_corpora():
     print(f"Merged corpus saved → {CORPUS_FILE}")
 
 
-# Tokenizer 
+# ---- Tokenizer -----------------------------------------------------------
 
 def train_tokenizer() -> spm.SentencePieceProcessor:
     if not Path(TOK_PREFIX + ".model").exists():
@@ -178,29 +185,25 @@ def train_tokenizer() -> spm.SentencePieceProcessor:
     return sp
 
 
-#  Tokenize corpus 
+# ---- Tokenize ------------------------------------------------------------
 
-def tokenize_corpus(sp: spm.SentencePieceProcessor):
+def tokenize_corpus(sp: spm.SentencePieceProcessor) -> None:
     if TOKEN_CACHE.exists():
         print("Token cache already exists ✓")
         return
 
-    BOS_ID = sp.bos_id()
-    EOS_ID = sp.eos_id()
+    bos_id, eos_id = sp.bos_id(), sp.eos_id()
 
     print("Tokenizing corpus (chunked)…")
-    tmp_dir     = DATA_DIR / "tok_chunks"
+    tmp_dir = DATA_DIR / "tok_chunks"
     tmp_dir.mkdir(exist_ok=True)
 
-    buf         = []
-    chunk_idx   = 0
-    total_toks  = 0
-    total_lines = 0
-    chunk_files = []
+    buf, chunk_files = [], []
+    chunk_idx = total_toks = total_lines = 0
 
-    def flush_chunk(buf, idx):
+    def flush_chunk(data, idx: int) -> Path:
         path = tmp_dir / f"chunk_{idx:04d}.npy"
-        np.save(path, np.array(buf, dtype=np.int32))
+        np.save(path, np.array(data, dtype=np.int32))
         return path
 
     with open(CORPUS_FILE, encoding="utf-8") as f:
@@ -208,13 +211,13 @@ def tokenize_corpus(sp: spm.SentencePieceProcessor):
             line = line.strip()
             if not line:
                 continue
-            buf.extend([BOS_ID] + sp.encode(line, out_type=int) + [EOS_ID])
+            buf.extend([bos_id] + sp.encode(line, out_type=int) + [eos_id])
             total_lines += 1
 
             if len(buf) >= TOKENIZE_CHUNK:
                 chunk_files.append(flush_chunk(buf, chunk_idx))
                 total_toks += len(buf)
-                chunk_idx  += 1
+                chunk_idx += 1
                 buf.clear()
 
             if total_lines % 100_000 == 0:
@@ -223,14 +226,13 @@ def tokenize_corpus(sp: spm.SentencePieceProcessor):
     if buf:
         chunk_files.append(flush_chunk(buf, chunk_idx))
         total_toks += len(buf)
-        buf.clear()
 
     print(f"Merging {len(chunk_files)} chunks ({total_toks:,} tokens)…")
     merged = np.memmap(TOKEN_CACHE, dtype=np.int32, mode="w+", shape=(total_toks,))
     pos = 0
     for path in chunk_files:
         part = np.load(path)
-        merged[pos : pos + len(part)] = part
+        merged[pos: pos + len(part)] = part
         pos += len(part)
         os.remove(path)
     merged.flush()
@@ -239,8 +241,7 @@ def tokenize_corpus(sp: spm.SentencePieceProcessor):
     print(f"Saved {total_toks:,} tokens → {TOKEN_CACHE}")
 
 
-
-def main():
+def main(argv: list[str] | None = None) -> None:
     setup_dirs()
     download_wikipedia()
     download_oscar()
