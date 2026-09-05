@@ -1,7 +1,43 @@
 # NepaliGPT
 
-A GPT-2 style causal language model trained from scratch on Nepali text.  
-Trained on **~41 million tokens** from Nepali Wikipedia + OSCAR web corpus.
+> A GPT-2 style causal language model trained from scratch on **~41 million tokens** of Nepali text.
+
+NepaliGPT is a **decoder-only transformer** built and trained entirely from scratch — no pretrained checkpoints, no transfer learning. It learns to model Nepali text one token at a time and can generate coherent Nepali text, predict likely next words, and be measured with perplexity for downstream generative NLP tasks.
+
+---
+
+## About
+
+Nepali is a low-resource language: most modern large language models give it little attention, and pretrained weights for Nepali are scarce and expensive to serve. NepaliGPT addresses that gap.
+
+**What it does**
+
+- **Generates Nepali text** from a short prompt (कविता, समाचार, निबन्ध शैली…)
+- **Predicts next words** with probabilities, useful for keyboards, completion, suggestions
+- **Learns character/word structure** from a 16k-vocabulary SentencePiece BPE subword tokenizer
+- **Turns out a compact, reproducible model** you can retrain on any Nepali corpus
+
+The project is deliberately end-to-end: it downloads the corpus, trains its own tokenizer, trains the model, and serves it through a small Python API and CLI — everything is reproducible from a blank machine.
+
+**Why a custom tokenizer?** Standard subword tokenizers are trained on English and mangle Devanagari script. NepaliGPT trains its own BPE tokenizer on Nepali Wikipedia + web text, so `नेपाल`, `हिमालय`, `संस्कृति` and friends become natural subword units instead of broken pieces.
+
+### Goals
+
+1. Provide a small, self-contained Nepali language model anyone can run on a single GPU.
+2. Be fully reproducible — corpus → tokenizer → training → inference, all in one pipeline.
+3. Serve as a foundation for experiments (fine-tuning, prompting, evaluation) in Nepali NLP.
+
+---
+
+## Features
+
+- **Three model sizes** — `small` (~17 M), `base` (~34 M, default), `large` (~118 M)
+- **Hand-rolled GPT-2 architecture** — pre-LayerNorm, GELU, causal self-attention, weight tying
+- **Mixed-precision training** with warm-up + cosine LR schedule and gradient clipping
+- **Native SentencePiece BPE tokenizer** trained on Nepali (vocab 16k)
+- **CLI + Python API** for generation, next-word prediction, and perplexity evaluation
+- **Checkpointing** — best-loss model plus periodic crash-recovery saves
+- **No pretrained-dependency downloads** — the checkpoint builds and stores everything itself
 
 ---
 
@@ -16,7 +52,6 @@ Trained on **~41 million tokens** from Nepali Wikipedia + OSCAR web corpus.
 | Steps | 15,000 |
 
 ### Training curve
-
 
 ![Training Loss](train-test.png)
 
@@ -34,12 +69,17 @@ Trained on **~41 million tokens** from Nepali Wikipedia + OSCAR web corpus.
 
 ```
 nepali-gpt2/
-├── nepali_gpt2/
-│   ├── __init__.py      # Public API
-│   ├── model.py         # NepaliGPT architecture
-│   ├── data_prep.py     # Download, tokenize, and cache corpus
-│   ├── train.py         # Full training loop
-│   └── generate.py      # Text generation & evaluation
+├── nepali_gpt2/                # Core Python package
+│   ├── __init__.py             # Public API + version
+│   ├── __main__.py             # `python -m nepali_gpt2` CLI dispatcher
+│   ├── config.py               # Model sizes + training defaults
+│   ├── model.py                # NepaliGPT architecture
+│   ├── data.py                 # Dataset & evaluation helpers
+│   ├── data_prep.py            # Corpus download + tokenizer CLI
+│   ├── train.py                # Training CLI
+│   └── generate.py             # Generation / eval CLI
+├── tests/                      # Smoke tests (pytest)
+├── pyproject.toml              # Package metadata + editable install
 ├── requirements.txt
 ├── .gitignore
 └── README.md
@@ -49,22 +89,26 @@ nepali-gpt2/
 
 ## Quick start
 
+> A CUDA-capable GPU is strongly recommended (tested on Tesla T4, 15.6 GB VRAM).
+
 ### 1 — Install dependencies
 
 ```bash
 pip install -r requirements.txt
+# or, for an editable install:
+pip install -e .
 ```
-
-A CUDA-capable GPU is strongly recommended (tested on Tesla T4, 15.6 GB VRAM).
 
 ### 2 — Set up API credentials
 
-**HuggingFace** (for Wikipedia download):
+**HuggingFace** (Wikipedia download):
+
 ```bash
 export HF_TOKEN=hf_...          # or add it in Colab Secrets
 ```
 
-**Kaggle** (for OSCAR corpus download):
+**Kaggle** (OSCAR corpus download):
+
 ```bash
 export KAGGLE_USERNAME=your_username
 export KAGGLE_KEY=your_api_key
@@ -73,10 +117,11 @@ export KAGGLE_KEY=your_api_key
 ### 3 — Prepare data
 
 ```bash
-python nepali_gpt2/data_prep.py
+python -m nepali_gpt2 data-prep          # or: python nepali_gpt2/data_prep.py
 ```
 
 This will:
+
 1. Download Nepali Wikipedia (~200k articles) from HuggingFace
 2. Download the OSCAR Nepali corpus (~500k lines) from Kaggle
 3. Merge both into `data/nepali_corpus.txt`
@@ -87,13 +132,14 @@ This will:
 
 ```bash
 # Default (base model, 15k steps)
-python nepali_gpt2/train.py
+python -m nepali_gpt2 train               # or: python nepali_gpt2/train.py
 
 # Custom settings
-python nepali_gpt2/train.py --max_steps 50000 --batch_size 64 --model_size base
+python -m nepali_gpt2 train --model-size small --max-steps 50000 --batch-size 64
 ```
 
 Checkpoints are saved in `ckpt/`:
+
 - `ckpt/best.pt` — best validation loss so far
 - `ckpt/step_005000.pt` — periodic crash-recovery saves (every 5,000 steps)
 
@@ -101,16 +147,18 @@ Checkpoints are saved in `ckpt/`:
 
 ```bash
 # Text generation (default)
-python nepali_gpt2/generate.py --prompt "नेपाल एक सुन्दर"
+python -m nepali_gpt2 generate --prompt "नेपाल एक सुन्दर"
 
 # Next-word prediction
-python nepali_gpt2/generate.py --mode next_words --prompt "काठमाडौं"
+python -m nepali_gpt2 generate --mode next_words --prompt "काठमाडौं" --top-n 5
 
 # Evaluate perplexity on the validation set
-python nepali_gpt2/generate.py --mode eval
+python -m nepali_gpt2 generate --mode eval
 ```
 
-### Python API
+---
+
+## Python API
 
 ```python
 from nepali_gpt2 import load_model_and_tokenizer, generate, next_words
@@ -153,7 +201,7 @@ NepaliGPT is a decoder-only transformer (GPT-2 style):
 |---|---|---|---|---|---|
 | `small` | 384 | 6 | 6 | ~17 M | Any GPU |
 | `base` *(default)* | 512 | 8 | 8 | ~34 M | T4 (16 GB) |
-| `large` | 768 | 12 | 12 | ~117 M | A100 (40 GB) |
+| `large` | 768 | 12 | 12 | ~118 M | A100 (40 GB) |
 
 ---
 
@@ -182,6 +230,15 @@ NepaliGPT is a decoder-only transformer (GPT-2 style):
 
 ---
 
+## Testing
+
+```bash
+pip install pytest
+pytest            # runs tests/test_model.py (requires torch)
+```
+
+---
+
 ## Limitations
 
 - The model was trained for only 15,000 steps (~1 epoch on this corpus). Longer training will improve quality.
@@ -191,6 +248,12 @@ NepaliGPT is a decoder-only transformer (GPT-2 style):
 
 ---
 
+## Contributing
+
+Issues, pull requests and Nepali-language datasets are all welcome. If you extend the corpus or tune the training run, open a PR with the new results table.
+
+---
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
