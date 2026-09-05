@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nepali-gpt2"
+version = "1.0.0"
+description = "A GPT-2 style causal language model trained from scratch on Nepali text."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Utsab Dahal", email = "utsabdahal34@gmail.com" }]
+keywords = ["nepali", "gpt2", "transformer", "language-model", "nlp"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch>=2.0.0",
+    "sentencepiece>=0.1.99",
+    "datasets>=2.14.0",
+    "kaggle>=1.5.16",
+    "numpy>=1.24.0",
+    "matplotlib>=3.7.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+nepali-gpt2 = "nepali_gpt2.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["nepali_gpt2*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

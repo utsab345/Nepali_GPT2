@@ -1,4 +1,4 @@
-# Data & model artefacts (large files — do not commit)
+# ---- Data & model artefacts (large files — do not commit) ----
 data/
 tokenizer/
 ckpt/
@@ -6,24 +6,36 @@ nepali_gpt2_final/
 nepali_gpt2_final.zip
 loss.png
 
-# Python
+# ---- Python ----
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg-info/
-dist/
-build/
-*.so
 .eggs/
+build/
+dist/
+*.so
+.pytest_cache/
+.mypy_cache/
 
-# Jupyter
+# ---- Virtual environments ----
+.venv/
+venv/
+env/
+
+# ---- Jupyter ----
 .ipynb_checkpoints/
 *.ipynb
 
-# Secrets — NEVER commit credentials
+# ---- IDEs / editors ----
+.idea/
+.vscode/
+
+# ---- Secrets — NEVER commit credentials ----
 .kaggle/
 kaggle.json
 .env
 
-# OS
+# ---- OS ----
 .DS_Store
 Thumbs.db
