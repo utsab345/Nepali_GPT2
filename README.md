@@ -309,6 +309,24 @@ curl -s http://localhost:8000/generate -H 'Content-Type: application/json' \
 
 ---
 
+## Inference & optimization
+
+Quantization and latency experiments (issues #12/#13). Both write
+timestamped reports to `eval/results/`; runs are CPU-only by design.
+
+```bash
+# latency (p50/p95), tokens/sec, prefill + peak memory
+python scripts/bench_inference.py --ckpt ckpt/best.pt --n 20 --max-new 64
+
+# FP16 vs dynamic INT8: size, speed and perplexity delta
+python scripts/quantize.py --ckpt ckpt/best.pt --outdir ckpt/quantized
+```
+
+Results tables will be published here once checkpoint numbers are produced
+on a GPU machine.
+
+---
+
 ## Development
 
 ```bash
