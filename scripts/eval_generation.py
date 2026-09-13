@@ -13,6 +13,7 @@ appends an aggregated JSON report to ``eval/results/``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from datetime import datetime, timezone
@@ -111,7 +112,10 @@ def run(args: argparse.Namespace) -> dict:
     report = {
         "task": "generation_quality",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "ckpt": str(args.ckpt),
+        "model": str(args.ckpt),
+        "config_hash": hashlib.sha256(
+            json.dumps(cfg, sort_keys=True).encode()
+        ).hexdigest()[:12],
         "generation_args": {
             "num_samples": args.num_samples,
             "max_new": args.max_new,

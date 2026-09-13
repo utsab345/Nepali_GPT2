@@ -6,6 +6,10 @@ nepali_gpt2_final/
 nepali_gpt2_final.zip
 loss.png
 
+# ---- Generated evaluation artefacts ----
+eval/results/*.json
+eval/data/ne_cloze_auto.jsonl
+
 # ---- Python ----
 __pycache__/
 *.py[cod]

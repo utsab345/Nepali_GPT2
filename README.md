@@ -261,13 +261,22 @@ NepaliGPT is a decoder-only transformer (GPT-2 style):
 ## Evaluation
 
 Automatic quality measurements live in `eval/` (metrics are pure Python,
-no torch) with two runners:
+no torch) with three runners plus a results aggregator:
 
 ```bash
-python scripts/eval_lm.py            # perplexity on the held-out val split
-python scripts/eval_generation.py    # distinct-1/2, repetition rate, sentence length
+python scripts/eval_lm.py                 # perplexity on the held-out val split
+python scripts/eval_generation.py         # distinct-1/2, repetition rate, sentence length
+python scripts/eval_qa.py                 # cloze/QA accuracy vs distractors
+python scripts/benchmark_table.py         # aggregate results/ into a Markdown table
+
+# Baselines (needs transformers): e.g. mGPT, XGLM
+python scripts/eval_baseline.py --model ai-forever/mGPT --text data/nepali_corpus.txt
+
+# Auto-build a larger cloze benchmark from your corpus (issue #1)
+python scripts/build_qa_benchmark.py --corpus data/nepali_corpus.txt
 ```
 
+A small curated Nepali cloze set ships in `eval/data/ne_cloze.jsonl`.
 Each run writes a timestamped JSON report to `eval/results/`. See
 `eval/README.md` for the full methodology and planned baseline
 comparisons.

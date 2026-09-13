@@ -12,6 +12,7 @@ Requires a trained checkpoint. Appends a timestamped JSON report to
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import sys
@@ -51,7 +52,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def run(args: argparse.Namespace) -> float:
-    model, _, _, device = load_model_and_tokenizer(args.ckpt, args.tok, args.device)
+    model, _, cfg, device = load_model_and_tokenizer(args.ckpt, args.tok, args.device)
 
     ppl = evaluate_perplexity(
         model,
@@ -63,11 +64,15 @@ def run(args: argparse.Namespace) -> float:
     report = {
         "task": "lm_perplexity",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "ckpt": str(args.ckpt),
+        "model": str(args.ckpt),
+        "config_hash": hashlib.sha256(
+            json.dumps(cfg, sort_keys=True).encode()
+        ).hexdigest()[:12],
         "perplexity": ppl,
         "mean_loss": math.log(ppl),
         "max_batches": args.max_batches,
     }
+    report["PPL"] = ppl
 
     results_dir = Path(args.results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
