@@ -1,12 +1,22 @@
 """Decoder-only Transformer (GPT-2 style) architecture for Nepali.
 
-NepaliGPT is a pre-LayerNorm, decoder-only causal language model:
+Architecture choices follow the canonical GPT-2 design, which remains a
+strong baseline for training, fine-tuning and inference:
 
-* Token + learned positional embeddings (context length 512)
-* Stack of causal multi-head self-attention + GELU feed-forward blocks
-* Pre-LayerNorm before attention and MLP, residual adds after dropout
-* Weight tying between the input embedding and the output head
-* Deterministic Normal(0, 0.02) initialisation
+* Pre-LayerNorm (Ba et al., 2016) — normalise *before* attention and the
+  MLP so gradients flow cleanly through the residual stream. This makes
+  training stable at higher learning rates than post-LayerNorm.
+* Learned token + positional embeddings with a context length of 512.
+* Causal multi-head self-attention so token ``t`` can only attend to
+  tokens ``<= t`` — the defining property of a decoder-only LM.
+* GELU feed-forward blocks (4x hidden expansion), the GPT-2 nonlinearity.
+* Weight tying between the input embedding and the output head, which
+  cuts ~30% of parameters on large vocabularies and acts as a prior that
+  tokens that are close in embedding space are decoded similarly.
+* Deterministic ``Normal(0, 0.02)`` initialisation, matching GPT-2.
+
+The module is deliberately dependency-free: only ``torch`` is required,
+which keeps this file easy to audit and safe to drop into other projects.
 """
 
 from __future__ import annotations
@@ -32,12 +42,18 @@ class MultiHeadAttention(nn.Module):
         self.emb_dim = emb_dim
         self.head_dim = emb_dim // n_heads
 
+        # wq/wk/wv project the input into query/key/value space; the
+        # `qkv_bias=False` knob mirrors GPT-2, where LayerNorm already
+        # provides the translation invariance a bias would add.
         self.wq = nn.Linear(emb_dim, emb_dim, bias=qkv_bias)
         self.wk = nn.Linear(emb_dim, emb_dim, bias=qkv_bias)
         self.wv = nn.Linear(emb_dim, emb_dim, bias=qkv_bias)
         self.proj = nn.Linear(emb_dim, emb_dim)
         self.drop = nn.Dropout(dropout)
 
+        # Causal mask: an upper-triangular matrix of ones, cached once as a
+        # non-persistent buffer (never saved with the state dict). Slicing
+        # `[:t, :t]` below makes it work for any sequence length <= ctx_len.
         self.register_buffer(
             "mask",
             torch.triu(torch.ones(ctx_len, ctx_len), diagonal=1),
@@ -46,11 +62,15 @@ class MultiHeadAttention(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, t, _ = x.shape
+        # Split each head out of the last dim: (B, T, H*d) -> (B, H, T, d).
         q = self.wq(x).view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
         k = self.wk(x).view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
         v = self.wv(x).view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
 
+        # Scaled dot-product attention. The 1/sqrt(d) factor keeps the logit
+        # variance near 1 so softmax does not saturate as d grows.
         att = (q @ k.transpose(-2, -1)) * (self.head_dim ** -0.5)
+        # Zero-out (-> -inf) future positions so each token only sees the past.
         att = att.masked_fill(self.mask[:t, :t].bool(), float("-inf"))
         att = self.drop(torch.softmax(att, dim=-1))
 
@@ -107,20 +127,28 @@ class NepaliGPT(nn.Module):
         self.cfg = cfg
 
         self.tok_emb = nn.Embedding(cfg["vocab_size"], cfg["emb_dim"])
+        # Learned positional embeddings. Each absolute position 0..ctx-1 gets
+        # its own trainable vector (GPT-2 style, vs. sinusoidal in the
+        # original Transformer).
         self.pos_emb = nn.Embedding(cfg["context_length"], cfg["emb_dim"])
         self.drop = nn.Dropout(cfg["drop_rate"])
         self.blocks = nn.Sequential(
             *[TransformerBlock(cfg) for _ in range(cfg["n_layers"])]
         )
         self.ln_f = nn.LayerNorm(cfg["emb_dim"])
+        # Output head maps hidden states back to vocabulary space (the
+        # "unembedding"). No bias: it is fused with the input embedding below.
         self.head = nn.Linear(cfg["emb_dim"], cfg["vocab_size"], bias=False)
 
         # Weight tying: share input and output embedding projection.
+        # Done BEFORE _init_weights so one matrix is initialised, not two.
         self.head.weight = self.tok_emb.weight
 
         self.apply(self._init_weights)
 
     def _init_weights(self, module: nn.Module) -> None:
+        # GPT-2 convention: small Normal(0, 0.02) weights, zero biases.
+        # LayerNorm is untouched -> default gamma=1, beta=0 is correct.
         if isinstance(module, nn.Linear):
             nn.init.normal_(module.weight, 0.0, 0.02)
             if module.bias is not None:

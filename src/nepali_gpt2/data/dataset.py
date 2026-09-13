@@ -1,4 +1,10 @@
-"""Dataset, evaluation and perplexity helpers shared by train and generate."""
+"""Dataset, evaluation and perplexity helpers shared by train and generate.
+
+Keeping these in one module avoids duplicating the token-array handling
+between training (which needs loss snapshots) and inference (which needs
+perplexity). The held-out split (5% of the corpus) is defined here too so
+train.py and generate.py always evaluate on the same slice of data.
+"""
 
 from __future__ import annotations
 
@@ -16,6 +22,11 @@ class TokenDataset(Dataset):
 
     Each item maps the window ``X[i : i + ctx]`` to its shifted target
     ``X[i + 1 : i + ctx + 1]``, i.e. every position predicts the next token.
+
+    Note: the token cache was written in document order (bos..eos per
+    line), so consecutive windows can span a document boundary. This is
+    acceptable — the boundary tokens simply become predict-one-another
+    examples, just as sentence boundaries do within a document.
     """
 
     def __init__(self, data: np.ndarray, ctx: int) -> None:
@@ -41,7 +52,11 @@ def eval_loss(
 ) -> float:
     """Mean cross-entropy loss over a subset of ``loader``.
 
-    The model is switched back to ``train()`` mode on return.
+    Averaged over ``max_batches`` (or the whole loader, whichever is
+    smaller) so evaluations stay bounded even on very long runs.
+
+    The model is switched back to ``train()`` mode on return, so callers
+    can evaluate mid-loop without restoring training mode themselves.
     """
     model.eval()
     total = count = 0
@@ -67,7 +82,13 @@ def evaluate_perplexity(
     max_batches: int = 200,
     use_amp: bool = True,
 ) -> float:
-    """Mean perplexity of ``model`` over the held-out 5% validation split."""
+    """Mean perplexity of ``model`` over the held-out 5% validation split.
+
+    Uses the *same* `0.95 / 0.05` split as ``train.py`` so the reported
+    number is comparable across runs and to the validation loss curve.
+    Recomputes exp(mean loss) over at most ``max_batches`` for speed;
+    set ``max_batches`` higher (or ``-1``) for full-corpus numbers.
+    """
     cache = Path(token_cache)
     if not cache.exists():
         raise FileNotFoundError(f"Token cache not found: {cache}")

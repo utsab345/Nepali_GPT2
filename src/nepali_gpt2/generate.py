@@ -5,6 +5,10 @@ Three modes are provided:
 * ``generate`` — autoregressive text completion
 * ``next_words`` — top-N next-token probabilities for a prompt
 * ``eval`` — mean perplexity on the held-out validation split
+
+Both generate modes are wrapped in ``@torch.no_grad()``: decoding is pure
+inference, and disabling gradient tracking also reduces memory so longer
+generations fit without CUDA OOM.
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from typing import List, Optional, Tuple
 import sentencepiece as spm
 import torch
 
-from nepali_gpt2.data import evaluate_perplexity
+from nepali_gpt2.data.dataset import evaluate_perplexity
 from nepali_gpt2.model import NepaliGPT
 
 DEFAULT_PROMPT = "नेपाल एक सुन्दर"
@@ -29,6 +33,10 @@ def load_model_and_tokenizer(
 ) -> Tuple[NepaliGPT, spm.SentencePieceProcessor, dict, torch.device]:
     """Load a trained checkpoint and its SentencePiece tokenizer.
 
+    The checkpoint is expected to be one saved by ``train.py``: it carries
+    a ``cfg`` key so the model is reconstructed from the exact architecture
+    that created it (not the current code presets).
+
     Returns:
         model (eval mode), tokenizer, model config dict, and device.
     """
@@ -36,6 +44,8 @@ def load_model_and_tokenizer(
         device = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(device)
 
+    # map_location lets a CUDA-trained checkpoint load onto CPU and vice
+    # versa, so serve/inference scripts can share the same weights.
     ckpt = torch.load(ckpt_path, map_location=device)
     cfg = ckpt["cfg"]
 
@@ -63,7 +73,13 @@ def generate(
     top_k: int = 50,
     top_p: float = 0.92,
 ) -> str:
-    """Autoregressively complete ``prompt`` with top-k / top-p sampling."""
+    """Autoregressively complete ``prompt`` with top-k / top-p sampling.
+
+    Decoding runs token-by-token: at each step we feed the last ``ctx``
+    tokens through the model, sample one token from the (truncated) next-
+    token distribution, append it, and repeat until ``max_new`` tokens or an
+    EOS token. The prompt is never included in the output.
+    """
     bos_id, eos_id = sp.bos_id(), sp.eos_id()
     ctx = cfg["context_length"]
 
@@ -73,13 +89,18 @@ def generate(
     )
 
     for _ in range(max_new):
+        # Slice the window to `ctx` so prompts longer than the context still
+        # fit through the (fixed-size) positional embedding table.
         logits, _ = model(ids[:, -ctx:])
         logits = logits[:, -1, :] / temperature
 
+        # Top-k: hard-truncate the distribution to the k most likely tokens.
         if top_k > 0:
             v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
             logits[logits < v[:, [-1]]] = float("-inf")
 
+        # Top-p (nucleus): keep the smallest set whose cumulative mass
+        # reaches p — a tighter, data-adaptive budget than fixed top-k.
         if top_p < 1.0:
             sorted_logits, sort_idx = torch.sort(logits, descending=True)
             cum = torch.cumsum(torch.softmax(sorted_logits, -1), -1)
@@ -103,7 +124,12 @@ def next_words(
     prompt: str,
     top_n: int = 10,
 ) -> List[Tuple[str, float]]:
-    """Return the top-``n`` most probable next (word, probability) pairs."""
+    """Return the top-``n`` most probable next (word, probability) pairs.
+
+    Unlike the sampler, this is a single forward pass (no decoding loop):
+    it takes one last-token softmax and reports the highest-probability
+    continuations, which is what a keyboard/completion UI wants.
+    """
     bos_id = sp.bos_id()
     ctx = cfg["context_length"]
 
@@ -117,6 +143,8 @@ def next_words(
     top_probs, top_ids = torch.topk(probs, top_n)
 
     return [
+        # SentencePiece marks word starts with "▁"; drop it and trim so the
+        # printed word reads like normal Nepali text.
         (sp.id_to_piece(i.item()).replace("▁", " ").strip(), p.item())
         for i, p in zip(top_ids, top_probs)
     ]

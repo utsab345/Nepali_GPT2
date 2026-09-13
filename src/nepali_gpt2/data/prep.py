@@ -7,6 +7,14 @@ Pipeline (all outputs cached, re-running is a no-op):
 3. Merge both into ``data/nepali_corpus.txt``
 4. Train a 16k-vocab SentencePiece BPE tokenizer
 5. Tokenize and cache all tokens as ``data/tokens.npy``
+
+Memory notes
+------------
+Each downloader streams from disk/network instead of loading the corpus
+into RAM, and tokenization writes chunked ``.npy`` files that are later
+concatenated into a single ``memmap``. This keeps peak memory flat even
+though the merged corpus is several hundred MB of raw text and the token
+cache is ~164 MB.
 """
 
 from __future__ import annotations
@@ -49,12 +57,16 @@ def download_wikipedia() -> None:
         print("Wikipedia corpus already downloaded ✓")
         return
 
+    # `datasets` is only needed for the download — keep it an optional,
+    # lazily-imported dependency so the rest of this module works without it.
     try:
         from datasets import load_dataset
     except ImportError:
         raise ImportError("Run: pip install datasets")
 
     print(f"Downloading Nepali Wikipedia (up to {WIKI_MAX_LINES:,} articles)…")
+    # streaming=True pulls rows one at a time — we never need to materialise
+    # the full dataset in memory, and we cap the number of articles written.
     ds = load_dataset(
         "wikimedia/wikipedia",
         "20231101.ne",
@@ -106,6 +118,8 @@ def download_oscar() -> None:
         print("Extraction complete ✓")
 
     txt_files = sorted(
+        # The dataset ships its text either as loose .txt files or as
+        # .jsonl — handle both so we don't depend on the exact archive layout.
         glob.glob(str(oscar_dir / "**" / "*.txt"), recursive=True)
         + glob.glob(str(oscar_dir / "**" / "*.jsonl"), recursive=True)
         + glob.glob(str(oscar_dir / "*.txt"), recursive=False)
@@ -126,9 +140,13 @@ def download_oscar() -> None:
                         try:
                             text = json.loads(line).get("text", "").strip()
                         except Exception:
+                            # A malformed JSONL row shouldn't kill the whole
+                            # pipeline — fall back to the raw line.
                             text = line.strip()
                     else:
                         text = line.strip()
+                    # Skip terse rows (headers, menus, fragments): they add
+                    # noise and barely help the language model.
                     if len(text) > 30:
                         out_f.write(text + "\n")
                         written += 1
@@ -163,6 +181,9 @@ def merge_corpora() -> None:
 def train_tokenizer() -> spm.SentencePieceProcessor:
     if not Path(TOK_PREFIX + ".model").exists():
         print(f"Training SentencePiece BPE tokenizer (vocab={VOCAB_SIZE})…")
+        # SentencePiece markers are fixed ids 0-3 (pad/unk/bos/eos). The
+        # loss in model.py ignores id 0 (pad) — these ids must stay stable
+        # or every checkpoint becomes unreadable, so don't reorder them.
         spm.SentencePieceTrainer.train(
             input=str(CORPUS_FILE),
             model_prefix=TOK_PREFIX,
@@ -173,6 +194,8 @@ def train_tokenizer() -> spm.SentencePieceProcessor:
             pad_piece="<pad>", unk_piece="<unk>",
             bos_piece="<s>", eos_piece="</s>",
             num_threads=os.cpu_count(),
+            # SentencePiece shuffles internally; training on the full lexicon
+            # can take a while, so cap samples for reproducible quick retrains.
             input_sentence_size=1_000_000,
             shuffle_input_sentence=True,
         )
@@ -198,6 +221,9 @@ def tokenize_corpus(sp: spm.SentencePieceProcessor) -> None:
     tmp_dir = DATA_DIR / "tok_chunks"
     tmp_dir.mkdir(exist_ok=True)
 
+    # Buffer tokens in ~2M-token chunks, flush each to its own .npy, then
+    # concatenate them into a single memmap. This bounds peak memory to a
+    # few chunks regardless of corpus size.
     buf, chunk_files = [], []
     chunk_idx = total_toks = total_lines = 0
 
@@ -228,6 +254,8 @@ def tokenize_corpus(sp: spm.SentencePieceProcessor) -> None:
         total_toks += len(buf)
 
     print(f"Merging {len(chunk_files)} chunks ({total_toks:,} tokens)…")
+    # Write straight through a memmap so we never build the full array twice;
+    # each chunk is copied in and deleted immediately after.
     merged = np.memmap(TOKEN_CACHE, dtype=np.int32, mode="w+", shape=(total_toks,))
     pos = 0
     for path in chunk_files:

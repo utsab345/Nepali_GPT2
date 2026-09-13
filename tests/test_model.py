@@ -2,6 +2,11 @@
 
 Run with:  pytest
 Requires ``torch`` (included in requirements.txt).
+
+These are fast unit tests, not full integration tests: they exercise the
+forward pass, weight tying, parameter counts and config sanity on a tiny
+model so any regression shows up in seconds rather than after a 2-hour
+training run.
 """
 
 import torch
@@ -11,6 +16,8 @@ from nepali_gpt2.model import NepaliGPT
 
 
 def tiny_cfg() -> dict:
+    # Keep dims small (emb_dim=32, ctx=64) so every test runs in well under
+    # a second on CPU — speed matters more than realism for smoke tests.
     return dict(
         vocab_size=1_000,
         context_length=64,

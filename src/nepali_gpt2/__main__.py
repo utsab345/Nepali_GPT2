@@ -1,7 +1,9 @@
 """Console entry point: ``python -m nepali_gpt2 {train|generate|data-prep}``.
 
 Thin dispatcher over the per-script CLIs so users can run everything from
-the project root without remembering file paths.
+the project root without remembering file paths. Unknown commands exit
+with code 1 and a usage hint; known commands return the sub-command's
+exit status (0 on success).
 """
 
 from __future__ import annotations
@@ -9,12 +11,17 @@ from __future__ import annotations
 import sys
 from typing import List, Optional
 
-from nepali_gpt2 import data_prep, generate, train
+# Bind the sub-commands directly from their modules. We must NOT go through
+# the package namespace (`import nepali_gpt2.generate as generate`): __init__
+# re-exports a *function* named `generate`, which would shadow the module.
+from nepali_gpt2.data.prep import main as data_prep_main
+from nepali_gpt2.generate import main as generate_main
+from nepali_gpt2.train import main as train_main
 
 COMMANDS = {
-    "train": train.main,
-    "generate": generate.main,
-    "data-prep": data_prep.main,
+    "train": train_main,
+    "generate": generate_main,
+    "data-prep": data_prep_main,
 }
 
 

@@ -2,6 +2,14 @@
 
 Generates ``ckpt/best.pt`` (lowest validation loss) and periodic
 crash-recovery checkpoints, plus a training-loss plot in ``loss.png``.
+
+Design notes
+------------
+* Mixed precision (``torch.amp``) is enabled automatically on CUDA and
+  disabled on CPU, so the script runs unchanged on either backend.
+* The LR schedule (linear warm-up -> cosine decay) and optimiser (AdamW
+  with weight decay on 2-D params only) follow the GPT-2 / nanoGPT recipe.
+* ``torch.compile`` is applied on CUDA as a free inference/training speed-up.
 """
 
 from __future__ import annotations
@@ -19,7 +27,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from nepali_gpt2.config import MODEL_CONFIGS, TRAIN_DEFAULTS
-from nepali_gpt2.data import TokenDataset, eval_loss
+from nepali_gpt2.data.dataset import TokenDataset, eval_loss
 from nepali_gpt2.model import NepaliGPT
 
 
@@ -29,7 +37,15 @@ def make_lr_fn(
     total_steps: int,
     min_lr_ratio: float,
 ):
-    """Return a warmup-then-cosine-decay learning rate schedule."""
+    """Return a warmup-then-cosine-decay learning rate schedule.
+
+    The returned function maps a step number to the LR for that step:
+    linearly from ``~0`` at step 0 to ``lr`` at ``warmup``, then a cosine
+    decay down to ``lr * min_lr_ratio`` at ``total_steps``.
+
+    Warm-up stabilises early optimisation (large gradients right after
+    random init); the cosine tail lets the model settle into a minimum.
+    """
 
     def lr_schedule(step: int) -> float:
         if step < warmup:
@@ -46,7 +62,12 @@ def build_optimizer(
     lr: float,
     weight_decay: float,
 ) -> torch.optim.AdamW:
-    """AdamW with weight decay applied to 2-D parameters only."""
+    """AdamW with weight decay applied to 2-D parameters only.
+
+    Weight matrices (>= 2-D) get L2-style decay; biases and LayerNorm
+    gains (1-D) are left untouched, matching the GPT-2 / nanoGPT
+    convention. Decaying biases makes optimisation noisier for little gain.
+    """
     decay = [p for n, p in model.named_parameters() if p.dim() >= 2]
     no_decay = [p for n, p in model.named_parameters() if p.dim() < 2]
     return torch.optim.AdamW(
@@ -60,6 +81,7 @@ def build_optimizer(
 
 
 def seed_everything(seed: int) -> None:
+    """Make the run reproducible across RNGs (Python, NumPy, PyTorch)."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -80,16 +102,19 @@ def train(args: argparse.Namespace) -> None:
     cfg_dict = MODEL_CONFIGS[args.model_size]
     ctx = cfg_dict["context_length"]
 
-    # Token cache produced by data_prep.py.
+    # Token cache produced by data.prep.
     token_cache = Path(args.token_cache)
     if not token_cache.exists():
         raise FileNotFoundError(
-            f"Token cache not found: {token_cache}\nRun data_prep.py first."
+            f"Token cache not found: {token_cache}\nRun `python -m nepali_gpt2 data-prep` first."
         )
+    # Open the cache as a read-only memmap: we never need the whole array
+    # in RAM, and NumPy slices double as windows for the DataLoader.
     arr = np.memmap(token_cache, dtype=np.int32, mode="r")
     print(f"Token array: {len(arr):,} tokens")
 
-    # Hold-out 5% of the corpus for validation.
+    # Hold-out 5% of the corpus for validation. Training only ever sees the
+    # first 95%; the tail is reserved for the val-loss / perplexity numbers.
     split = int(0.95 * len(arr))
     train_loader = DataLoader(
         TokenDataset(arr[:split], ctx),
@@ -106,12 +131,16 @@ def train(args: argparse.Namespace) -> None:
     model = NepaliGPT(cfg_dict).to(device)
     print(f"Parameters    : {model.num_params() / 1e6:.2f} M")
 
+    # torch.compile gives a free speed-up on modern Triton-equipped GPUs.
+    # Guarded so CPU-only machines (where it occasionally regresses) skip it.
     if hasattr(torch, "compile") and torch.cuda.is_available():
         model = torch.compile(model)
         print("torch.compile applied")
 
     optimizer = build_optimizer(model, args.lr, args.weight_decay)
     lr_fn = make_lr_fn(args.lr, args.warmup_steps, args.max_steps, args.min_lr_ratio)
+    # FP16 autocast + gradient scaling on CUDA. `enabled=False` on CPU makes
+    # the whole AMP dance a no-op there, so one code path serves both.
     use_amp = torch.cuda.is_available()
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
@@ -119,6 +148,8 @@ def train(args: argparse.Namespace) -> None:
     ckpt_dir.mkdir(exist_ok=True)
 
     def save_checkpoint(path: Path, step: int, val_loss: float) -> None:
+        # The config dict is saved alongside weights so checkpoints remain
+        # loadable without matching the source tag (see generate.load_*).
         torch.save(
             {
                 "step": step,
@@ -155,6 +186,9 @@ def train(args: argparse.Namespace) -> None:
             with torch.amp.autocast("cuda", enabled=use_amp):
                 _, loss = model(x, y)
 
+            # GradScaler scales the loss up in FP16 to keep small gradients
+            # representable; the backward/lr/update order below is the one
+            # PyTorch recommends to avoid losing precision.
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
             nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)

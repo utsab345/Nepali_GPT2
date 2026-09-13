@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "nepali-gpt2"
 version = "1.0.0"
-description = "A GPT-2 style causal language model trained from scratch on Nepali text."
+description = "GPT-2 style decoder-only language model trained from scratch on ~41M tokens of Nepali text. End-to-end corpus download, SentencePiece BPE tokenizer, training CLI, and generation API."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
@@ -32,7 +32,9 @@ dev = ["pytest>=7.0"]
 nepali-gpt2 = "nepali_gpt2.__main__:main"
 
 [tool.setuptools.packages.find]
+where = ["src"]
 include = ["nepali_gpt2*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]

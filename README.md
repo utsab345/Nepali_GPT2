@@ -2,13 +2,24 @@
 
 > A GPT-2 style causal language model trained from scratch on **~41 million tokens** of Nepali text.
 
+**About this project** — NepaliGPT is an end-to-end, reproducible Nepali
+language model: it downloads the corpus, trains its own Devanagari-aware
+SentencePiece tokenizer, trains a decoder-only transformer and serves it
+through a small Python API + CLI. No pretrained checkpoints, no transfer
+learning — everything from corpus to checkpoint is built by this repo.
+
 NepaliGPT is a **decoder-only transformer** built and trained entirely from scratch — no pretrained checkpoints, no transfer learning. It learns to model Nepali text one token at a time and can generate coherent Nepali text, predict likely next words, and be measured with perplexity for downstream generative NLP tasks.
 
 ---
 
 ## About
 
-Nepali is a low-resource language: most modern large language models give it little attention, and pretrained weights for Nepali are scarce and expensive to serve. NepaliGPT addresses that gap.
+Nepali is a low-resource language: it is spoken by ~30 million people, yet
+most mainstream language models give it little attention, and pretrained
+weights for Nepali are scarce and expensive to serve. NepaliGPT addresses
+that gap by building a capable, standalone Nepali language model from
+**zero external pretrained weights** — everything from the corpus to the
+checkpoint is produced by this repository.
 
 **What it does**
 
@@ -17,9 +28,16 @@ Nepali is a low-resource language: most modern large language models give it lit
 - **Learns character/word structure** from a 16k-vocabulary SentencePiece BPE subword tokenizer
 - **Turns out a compact, reproducible model** you can retrain on any Nepali corpus
 
-The project is deliberately end-to-end: it downloads the corpus, trains its own tokenizer, trains the model, and serves it through a small Python API and CLI — everything is reproducible from a blank machine.
+**Why a custom tokenizer?** Standard subword tokenizers are trained on
+English and mangle Devanagari script. NepaliGPT trains its own BPE
+tokenizer on Nepali Wikipedia + web text, so `नेपाल`, `हिमालय`,
+`संस्कृति` and friends become natural subword units instead of broken
+pieces — the single most important pre-processing choice for Devanagari
+NLP.
 
-**Why a custom tokenizer?** Standard subword tokenizers are trained on English and mangle Devanagari script. NepaliGPT trains its own BPE tokenizer on Nepali Wikipedia + web text, so `नेपाल`, `हिमालय`, `संस्कृति` and friends become natural subword units instead of broken pieces.
+**The project is deliberately end-to-end**: it downloads the corpus, trains
+its own tokenizer, trains the model, and serves it through a small Python
+API and CLI — everything is reproducible from a blank machine.
 
 ### Goals
 
@@ -53,7 +71,7 @@ The project is deliberately end-to-end: it downloads the corpus, trains its own 
 
 ### Training curve
 
-![Training Loss](train-test.png)
+![Training Loss](assets/train-test.png)
 
 ### Sample outputs
 
@@ -69,16 +87,19 @@ The project is deliberately end-to-end: it downloads the corpus, trains its own 
 
 ```
 nepali-gpt2/
-├── nepali_gpt2/                # Core Python package
+├── src/nepali_gpt2/            # Core Python package (src layout)
 │   ├── __init__.py             # Public API + version
 │   ├── __main__.py             # `python -m nepali_gpt2` CLI dispatcher
 │   ├── config.py               # Model sizes + training defaults
 │   ├── model.py                # NepaliGPT architecture
-│   ├── data.py                 # Dataset & evaluation helpers
-│   ├── data_prep.py            # Corpus download + tokenizer CLI
 │   ├── train.py                # Training CLI
-│   └── generate.py             # Generation / eval CLI
+│   ├── generate.py             # Generation / eval CLI
+│   └── data/                   # Data pipeline subpackage
+│       ├── __init__.py         # Re-exports for train/generate
+│       ├── prep.py             # Corpus download + tokenizer CLI
+│       └── dataset.py          # TokenDataset + eval/perplexity helpers
 ├── tests/                      # Smoke tests (pytest)
+├── assets/                     # Images (training curves, etc.)
 ├── pyproject.toml              # Package metadata + editable install
 ├── requirements.txt
 ├── .gitignore
@@ -117,7 +138,7 @@ export KAGGLE_KEY=your_api_key
 ### 3 — Prepare data
 
 ```bash
-python -m nepali_gpt2 data-prep          # or: python nepali_gpt2/data_prep.py
+python -m nepali_gpt2 data-prep    # download corpus + train tokenizer
 ```
 
 This will:
@@ -132,7 +153,7 @@ This will:
 
 ```bash
 # Default (base model, 15k steps)
-python -m nepali_gpt2 train               # or: python nepali_gpt2/train.py
+python -m nepali_gpt2 train
 
 # Custom settings
 python -m nepali_gpt2 train --model-size small --max-steps 50000 --batch-size 64
