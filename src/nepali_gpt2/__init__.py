@@ -13,8 +13,8 @@ importing this package stays cheap.
 """
 
 from nepali_gpt2.config import MODEL_CONFIGS
+from nepali_gpt2.generate import generate, load_model_and_tokenizer, next_words
 from nepali_gpt2.model import NepaliGPT
-from nepali_gpt2.generate import load_model_and_tokenizer, generate, next_words
 
 # Keep in sync with pyproject.toml.
 __version__ = "1.0.0"

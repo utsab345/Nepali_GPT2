@@ -5,8 +5,6 @@ named ``generate``, which shadows the ``generate`` module. The dispatcher
 must resolve each sub-command to the real module's entry point.
 """
 
-import sys
-
 import nepali_gpt2.__main__ as dispatcher
 
 

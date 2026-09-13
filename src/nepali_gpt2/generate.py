@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from typing import List, Optional, Tuple
 
 import sentencepiece as spm
 import torch
@@ -29,8 +28,8 @@ DEFAULT_PROMPT = "नेपाल एक सुन्दर"
 def load_model_and_tokenizer(
     ckpt_path: str = "ckpt/best.pt",
     tok_path: str = "tokenizer/nepali_bpe.model",
-    device: Optional[str] = None,
-) -> Tuple[NepaliGPT, spm.SentencePieceProcessor, dict, torch.device]:
+    device: str | None = None,
+) -> tuple[NepaliGPT, spm.SentencePieceProcessor, dict, torch.device]:
     """Load a trained checkpoint and its SentencePiece tokenizer.
 
     The checkpoint is expected to be one saved by ``train.py``: it carries
@@ -85,7 +84,8 @@ def generate(
 
     ids = torch.tensor(
         [[bos_id] + sp.encode(prompt, out_type=int)],
-        dtype=torch.long, device=device,
+        dtype=torch.long,
+        device=device,
     )
 
     for _ in range(max_new):
@@ -104,7 +104,9 @@ def generate(
         if top_p < 1.0:
             sorted_logits, sort_idx = torch.sort(logits, descending=True)
             cum = torch.cumsum(torch.softmax(sorted_logits, -1), -1)
-            sorted_logits[cum - torch.softmax(sorted_logits, -1) > top_p] = float("-inf")
+            sorted_logits[cum - torch.softmax(sorted_logits, -1) > top_p] = float(
+                "-inf"
+            )
             logits = torch.zeros_like(logits).scatter_(1, sort_idx, sorted_logits)
 
         next_id = torch.multinomial(torch.softmax(logits, -1), 1)
@@ -123,7 +125,7 @@ def next_words(
     device,
     prompt: str,
     top_n: int = 10,
-) -> List[Tuple[str, float]]:
+) -> list[tuple[str, float]]:
     """Return the top-``n`` most probable next (word, probability) pairs.
 
     Unlike the sampler, this is a single forward pass (no decoding loop):
@@ -135,7 +137,8 @@ def next_words(
 
     ids = torch.tensor(
         [[bos_id] + sp.encode(prompt, out_type=int)],
-        dtype=torch.long, device=device,
+        dtype=torch.long,
+        device=device,
     )[:, -ctx:]
 
     logits, _ = model(ids)
@@ -151,15 +154,19 @@ def next_words(
 
 
 def run(args: argparse.Namespace) -> None:
-    model, sp, cfg, device = load_model_and_tokenizer(
-        args.ckpt, args.tok, args.device
-    )
+    model, sp, cfg, device = load_model_and_tokenizer(args.ckpt, args.tok, args.device)
 
     if args.mode == "generate":
         out = generate(
-            model, sp, cfg, device,
-            prompt=args.prompt, max_new=args.max_new,
-            temperature=args.temperature, top_k=args.top_k, top_p=args.top_p,
+            model,
+            sp,
+            cfg,
+            device,
+            prompt=args.prompt,
+            max_new=args.max_new,
+            temperature=args.temperature,
+            top_k=args.top_k,
+            top_p=args.top_p,
         )
         print(f"\nPrompt   : {args.prompt}")
         print(f"Generated: {out}")
@@ -176,27 +183,29 @@ def run(args: argparse.Namespace) -> None:
         print(f"\nPerplexity (val): {ppl:.2f}")
 
 
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="NepaliGPT inference",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     p.add_argument("--prompt", default=DEFAULT_PROMPT)
-    p.add_argument("--mode", default="generate",
-                   choices=["generate", "next_words", "eval"])
+    p.add_argument(
+        "--mode", default="generate", choices=["generate", "next_words", "eval"]
+    )
     p.add_argument("--max-new", type=int, default=80)
     p.add_argument("--temperature", type=float, default=0.8)
     p.add_argument("--top-k", type=int, default=50)
     p.add_argument("--top-p", type=float, default=0.92)
-    p.add_argument("--top-n", type=int, default=10,
-                   help="Number of next-word predictions to show")
+    p.add_argument(
+        "--top-n", type=int, default=10, help="Number of next-word predictions to show"
+    )
     p.add_argument("--ckpt", default="ckpt/best.pt")
     p.add_argument("--tok", default="tokenizer/nepali_bpe.model")
     p.add_argument("--device", default=None)
     return p.parse_args(argv)
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     """CLI wrapper: parse arguments and dispatch the requested mode."""
     run(parse_args(argv))
     return 0

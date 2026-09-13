@@ -9,7 +9,6 @@ exit status (0 on success).
 from __future__ import annotations
 
 import sys
-from typing import List, Optional
 
 # Bind the sub-commands directly from their modules. We must NOT go through
 # the package namespace (`import nepali_gpt2.generate as generate`): __init__
@@ -25,7 +24,7 @@ COMMANDS = {
 }
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if not args or args[0] not in COMMANDS:
         print(__doc__, file=sys.stderr)

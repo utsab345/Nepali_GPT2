@@ -69,7 +69,7 @@ class MultiHeadAttention(nn.Module):
 
         # Scaled dot-product attention. The 1/sqrt(d) factor keeps the logit
         # variance near 1 so softmax does not saturate as d grows.
-        att = (q @ k.transpose(-2, -1)) * (self.head_dim ** -0.5)
+        att = (q @ k.transpose(-2, -1)) * (self.head_dim**-0.5)
         # Zero-out (-> -inf) future positions so each token only sees the past.
         att = att.masked_fill(self.mask[:t, :t].bool(), float("-inf"))
         att = self.drop(torch.softmax(att, dim=-1))
@@ -100,8 +100,11 @@ class TransformerBlock(nn.Module):
     def __init__(self, cfg: dict) -> None:
         super().__init__()
         self.attn = MultiHeadAttention(
-            cfg["emb_dim"], cfg["context_length"],
-            cfg["drop_rate"], cfg["n_heads"], cfg["qkv_bias"],
+            cfg["emb_dim"],
+            cfg["context_length"],
+            cfg["drop_rate"],
+            cfg["n_heads"],
+            cfg["qkv_bias"],
         )
         self.ff = FeedForward(cfg)
         self.ln1 = nn.LayerNorm(cfg["emb_dim"])

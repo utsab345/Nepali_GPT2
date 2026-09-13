@@ -26,7 +26,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0"]
+dev = [
+    "pytest>=7.0",
+    "ruff",
+    "black",
+    "mypy",
+    "pre-commit",
+]
 
 [project.scripts]
 nepali-gpt2 = "nepali_gpt2.__main__:main"
@@ -38,3 +44,23 @@ include = ["nepali_gpt2*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E203", "E501"]
+
+[tool.black]
+line-length = 88
+target-version = ["py39"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src", "scripts"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+check_untyped_defs = true

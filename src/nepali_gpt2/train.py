@@ -118,15 +118,23 @@ def train(args: argparse.Namespace) -> None:
     split = int(0.95 * len(arr))
     train_loader = DataLoader(
         TokenDataset(arr[:split], ctx),
-        batch_size=args.batch_size, shuffle=True,
-        num_workers=2, pin_memory=True, drop_last=True,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=2,
+        pin_memory=True,
+        drop_last=True,
     )
     val_loader = DataLoader(
         TokenDataset(arr[split:], ctx),
-        batch_size=args.batch_size, shuffle=False,
-        num_workers=2, pin_memory=True, drop_last=False,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=2,
+        pin_memory=True,
+        drop_last=False,
     )
-    print(f"Train batches : {len(train_loader):,}  |  Val batches : {len(val_loader):,}")
+    print(
+        f"Train batches : {len(train_loader):,}  |  Val batches : {len(val_loader):,}"
+    )
 
     model = NepaliGPT(cfg_dict).to(device)
     print(f"Parameters    : {model.num_params() / 1e6:.2f} M")
@@ -198,8 +206,12 @@ def train(args: argparse.Namespace) -> None:
             global_step += 1
 
             if global_step % args.eval_every == 0 or global_step == 1:
-                v_loss = eval_loss(model, val_loader, device, args.eval_batches, use_amp)
-                t_loss = eval_loss(model, train_loader, device, args.eval_batches, use_amp)
+                v_loss = eval_loss(
+                    model, val_loader, device, args.eval_batches, use_amp
+                )
+                t_loss = eval_loss(
+                    model, train_loader, device, args.eval_batches, use_amp
+                )
 
                 train_losses.append(t_loss)
                 val_losses.append(v_loss)
@@ -218,7 +230,9 @@ def train(args: argparse.Namespace) -> None:
                     print(f"  best model saved (val={v_loss:.4f})")
 
             if global_step % args.save_every == 0:
-                save_checkpoint(ckpt_dir / f"step_{global_step:06d}.pt", global_step, best_val)
+                save_checkpoint(
+                    ckpt_dir / f"step_{global_step:06d}.pt", global_step, best_val
+                )
                 print(f"  [checkpoint saved at step {global_step}]")
 
         if global_step >= args.max_steps:
@@ -247,13 +261,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Train NepaliGPT",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--model-size", default=TRAIN_DEFAULTS["model_size"],
-                   choices=sorted(MODEL_CONFIGS), help="architecture preset")
+    p.add_argument(
+        "--model-size",
+        default=TRAIN_DEFAULTS["model_size"],
+        choices=sorted(MODEL_CONFIGS),
+        help="architecture preset",
+    )
     for key in TRAIN_DEFAULTS:
         if key == "model_size":
             continue
-        p.add_argument(f"--{key.replace('_', '-')}", type=type(TRAIN_DEFAULTS[key]),
-                       default=TRAIN_DEFAULTS[key])
+        p.add_argument(
+            f"--{key.replace('_', '-')}",
+            type=type(TRAIN_DEFAULTS[key]),
+            default=TRAIN_DEFAULTS[key],
+        )
     return p.parse_args(argv)
 
 

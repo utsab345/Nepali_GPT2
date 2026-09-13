@@ -1,0 +1,12 @@
+# Default inference / decoding settings (see nepali_gpt2/generate.py).
+mode: generate  # generate | next_words | eval
+prompt: "नेपाल एक सुन्दर"
+max_new_tokens: 80
+temperature: 0.8
+top_k: 50
+top_p: 0.92
+top_n: 10  # next-word predictions to show
+
+# Artifact paths (relative to the repo root).
+ckpt_path: ckpt/best.pt
+tok_path: tokenizer/nepali_bpe.model

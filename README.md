@@ -98,8 +98,15 @@ nepali-gpt2/
 │       ├── __init__.py         # Re-exports for train/generate
 │       ├── prep.py             # Corpus download + tokenizer CLI
 │       └── dataset.py          # TokenDataset + eval/perplexity helpers
+├── scripts/                    # CLI entrypoints (train, generate, …)
+├── configs/                    # YAML presets for model/training/inference
+├── eval/                       # Evaluation suites + results (WIP)
+├── api/                        # FastAPI inference service (WIP)
+├── docker/                     # Docker packaging (WIP)
+├── notebooks/                  # Exploratory analysis (WIP)
 ├── tests/                      # Smoke tests (pytest)
 ├── assets/                     # Images (training curves, etc.)
+├── .github/workflows/ci.yml    # Lint + type check + tests on push/PR
 ├── pyproject.toml              # Package metadata + editable install
 ├── requirements.txt
 ├── .gitignore
@@ -251,12 +258,20 @@ NepaliGPT is a decoder-only transformer (GPT-2 style):
 
 ---
 
-## Testing
+## Development
 
 ```bash
-pip install pytest
-pytest            # runs tests/test_model.py (requires torch)
+pip install -e ".[dev]"       # install package + dev tools (pytest, ruff, black, mypy, pre-commit)
+pre-commit install            # install the git hooks (lint/format on commit)
+
+ruff check .                  # lint
+black --check .               # format check
+mypy                          # type check
+pytest                        # run tests (requires torch)
 ```
+
+CI (`.github/workflows/ci.yml`) runs lint, format check, type check and the
+test suite on every push/PR.
 
 ---
 
