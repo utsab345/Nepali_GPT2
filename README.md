@@ -283,6 +283,32 @@ comparisons.
 
 ---
 
+## Serving (API)
+
+A FastAPI service wraps a trained checkpoint (`api/main.py`):
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/generate` | text completion (prompt, max_new, temperature, top_k, top_p, stop) |
+| `POST` | `/next_token` | top-k next tokens + probabilities |
+| `GET`  | `/health` | liveness / readiness + model info |
+| `GET`  | `/metrics` | request counters, error rate, avg latency, uptime |
+
+```bash
+NEPALIGPT_DEVICE=cpu uvicorn api.main:app --reload
+
+curl -s http://localhost:8000/generate -H 'Content-Type: application/json' \
+  -d '{"prompt": "नेपाल एक सुन्दर", "max_new": 80}'
+```
+
+- Docker: `docker build -f docker/Dockerfile -t nepaligpt-api .` then
+  `docker compose -f docker/docker-compose.yml up --build` (see
+  `docker/README.md`).
+- Gradio demo: `GRADIO_API_URL=http://localhost:8000 python api/demo.py`
+  (see `api/README.md`); interactive docs at `/docs`.
+
+---
+
 ## Development
 
 ```bash

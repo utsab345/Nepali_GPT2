@@ -48,7 +48,7 @@ pythonpath = ["src", "."]
 [tool.ruff]
 line-length = 88
 target-version = "py39"
-src = ["src", "tests", "scripts", "eval"]
+src = ["src", "tests", "scripts", "eval", "api"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
@@ -60,7 +60,7 @@ target-version = ["py39"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["src", "scripts", "eval"]
+files = ["src", "scripts", "eval", "api"]
 ignore_missing_imports = true
 warn_unused_ignores = true
 check_untyped_defs = true

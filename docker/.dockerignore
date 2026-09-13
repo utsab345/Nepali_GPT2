@@ -1,0 +1,13 @@
+.git
+data/
+ckpt/
+tokenizer/
+eval/
+notebooks/
+tests/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+events.out.tfevents.*
