@@ -258,6 +258,22 @@ NepaliGPT is a decoder-only transformer (GPT-2 style):
 
 ---
 
+## Evaluation
+
+Automatic quality measurements live in `eval/` (metrics are pure Python,
+no torch) with two runners:
+
+```bash
+python scripts/eval_lm.py            # perplexity on the held-out val split
+python scripts/eval_generation.py    # distinct-1/2, repetition rate, sentence length
+```
+
+Each run writes a timestamped JSON report to `eval/results/`. See
+`eval/README.md` for the full methodology and planned baseline
+comparisons.
+
+---
+
 ## Development
 
 ```bash

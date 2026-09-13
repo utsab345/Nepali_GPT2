@@ -43,12 +43,12 @@ include = ["nepali_gpt2*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 
 [tool.ruff]
 line-length = 88
 target-version = "py39"
-src = ["src", "tests", "scripts"]
+src = ["src", "tests", "scripts", "eval"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
@@ -60,7 +60,7 @@ target-version = ["py39"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["src", "scripts"]
+files = ["src", "scripts", "eval"]
 ignore_missing_imports = true
 warn_unused_ignores = true
 check_untyped_defs = true

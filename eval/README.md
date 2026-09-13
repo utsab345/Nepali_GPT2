@@ -16,7 +16,7 @@ table for the README.
 
 ## Status
 
-- [ ] PPL evaluation
-- [ ] Generation metrics (distinct-n, repetition)
+- [x] PPL evaluation — `python scripts/eval_lm.py`
+- [x] Generation metrics (distinct-n, repetition) — `python scripts/eval_generation.py`
 - [ ] QA / cloze benchmark dataset
 - [ ] Baseline comparison table
