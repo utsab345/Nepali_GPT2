@@ -109,6 +109,20 @@ def test_generate_respects_max_new_bound() -> None:
     assert 0 < len(sp.encode(out, out_type=int)) <= 16
 
 
+def test_generate_rejects_invalid_sampling_settings() -> None:
+    cfg = tiny_cfg()
+    model = NepaliGPT(cfg).eval()
+    sp = FakeSP()
+
+    for kwargs in ({"temperature": 0}, {"top_p": 0}, {"top_p": 1.1}, {"max_new": -1}):
+        try:
+            generate(model, sp, cfg, torch.device("cpu"), **kwargs)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"expected ValueError for {kwargs}")
+
+
 def test_next_words_returns_sorted_probabilities() -> None:
     cfg = tiny_cfg()
     model = NepaliGPT(cfg).eval()
@@ -120,6 +134,20 @@ def test_next_words_returns_sorted_probabilities() -> None:
     assert all(isinstance(t, str) for t in tokens)
     assert all(0.0 <= p <= 1.0 for p in probs)
     assert list(probs) == sorted(probs, reverse=True)
+
+
+def test_next_words_rejects_non_positive_top_n() -> None:
+    cfg = tiny_cfg()
+    model = NepaliGPT(cfg).eval()
+    sp = FakeSP()
+
+    for top_n in (0, -1):
+        try:
+            next_words(model, sp, cfg, torch.device("cpu"), prompt="ने", top_n=top_n)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"expected ValueError for top_n={top_n}")
 
 
 def test_smoke_train_step_reduces_loss() -> None:

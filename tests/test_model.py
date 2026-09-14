@@ -48,6 +48,19 @@ def test_logits_without_targets() -> None:
     assert loss is None
 
 
+def test_forward_rejects_sequences_longer_than_context() -> None:
+    cfg = tiny_cfg()
+    model = NepaliGPT(cfg).eval()
+    x = torch.randint(0, cfg["vocab_size"], (1, cfg["context_length"] + 1))
+
+    try:
+        model(x)
+    except ValueError as exc:
+        assert "context_length" in str(exc)
+    else:
+        raise AssertionError("expected overlong input to be rejected")
+
+
 def test_weight_tying() -> None:
     model = NepaliGPT(tiny_cfg())
     assert model.head.weight is model.tok_emb.weight

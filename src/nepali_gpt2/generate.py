@@ -79,6 +79,13 @@ def generate(
     token distribution, append it, and repeat until ``max_new`` tokens or an
     EOS token. The prompt is never included in the output.
     """
+    if max_new < 0:
+        raise ValueError("max_new must be non-negative")
+    if temperature <= 0:
+        raise ValueError("temperature must be greater than zero")
+    if not 0 < top_p <= 1:
+        raise ValueError("top_p must be greater than zero and at most one")
+
     bos_id, eos_id = sp.bos_id(), sp.eos_id()
     ctx = cfg["context_length"]
 
@@ -132,6 +139,9 @@ def next_words(
     it takes one last-token softmax and reports the highest-probability
     continuations, which is what a keyboard/completion UI wants.
     """
+    if top_n <= 0:
+        raise ValueError("top_n must be greater than zero")
+
     bos_id = sp.bos_id()
     ctx = cfg["context_length"]
 
@@ -143,7 +153,7 @@ def next_words(
 
     logits, _ = model(ids)
     probs = torch.softmax(logits[0, -1], dim=-1)
-    top_probs, top_ids = torch.topk(probs, top_n)
+    top_probs, top_ids = torch.topk(probs, min(top_n, probs.numel()))
 
     return [
         # SentencePiece marks word starts with "▁"; drop it and trim so the

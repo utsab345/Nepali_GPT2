@@ -61,7 +61,7 @@ def eval_loss(
     model.eval()
     total = count = 0
     for i, (x, y) in enumerate(loader):
-        if i >= max_batches:
+        if max_batches >= 0 and i >= max_batches:
             break
         x, y = x.to(device), y.to(device)
         with torch.amp.autocast("cuda", enabled=use_amp):
@@ -101,7 +101,7 @@ def evaluate_perplexity(
     model.eval()
     total = count = 0
     for i, (x, y) in enumerate(dl):
-        if i >= max_batches:
+        if max_batches >= 0 and i >= max_batches:
             break
         x, y = x.to(device), y.to(device)
         with torch.amp.autocast("cuda", enabled=(use_amp and torch.cuda.is_available())):

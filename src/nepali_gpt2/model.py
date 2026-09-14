@@ -176,6 +176,10 @@ class NepaliGPT(nn.Module):
             ``None`` when ``targets`` is ``None``).
         """
         b, t = idx.shape
+        if t > self.cfg["context_length"]:
+            raise ValueError(
+                f"sequence length ({t}) exceeds context_length ({self.cfg['context_length']})"
+            )
         pos = torch.arange(t, device=idx.device)
         x = self.drop(self.tok_emb(idx) + self.pos_emb(pos))
         x = self.blocks(x)
