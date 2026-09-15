@@ -1,0 +1,5 @@
+gradio>=4.0
+transformers>=4.40
+sentencepiece>=0.1.99
+torch>=2.0
+huggingface_hub>=0.23

@@ -73,6 +73,34 @@ API and CLI — everything is reproducible from a blank machine.
 
 ![Training Loss](assets/train-test.png)
 
+## Models and live demo
+
+- [NepaliGPT-base on Hugging Face](https://huggingface.co/utsabdahal34/NepaliGPT-base)
+- [NepaliGPT demo Space](https://huggingface.co/spaces/utsabdahal34/NepaliGPT-demo)
+
+The base model is downloadable and runnable without retraining. The small and
+instruction-tuned checkpoints are planned releases.
+
+### Published base-model benchmark
+
+The table below reports measurements from the supplied Colab checkpoint on an
+AMD Ryzen 5 5500U CPU with one PyTorch thread. Decoding is fixed-length greedy
+decoding without a KV cache; throughput counts generated token steps. PPL is
+omitted because the held-out token cache was not included in the export.
+
+| Model / precision | QA (5-item) | Prompt tokens | Decode p50 | Decode p95 | Throughput |
+|---|---:|---:|---:|---:|---:|
+| NepaliGPT-base FP32 | 3/5 | 32 | 3,625 ms | 3,859 ms | 8.76 tok/s |
+| NepaliGPT-base FP32 | — | 128 | 8,776 ms | 9,249 ms | 3.61 tok/s |
+| NepaliGPT-base FP16 | 3/5 | 32 | 17,172 ms | — | 1.86 tok/s |
+| NepaliGPT-base INT8 | 3/5 | 32 | 2,035 ms | — | 15.72 tok/s |
+| NepaliGPT-base INT4 | 3/5 | 32 | 8,474 ms | — | 3.78 tok/s |
+
+See [full benchmark notes](docs/BASE_RESULTS.md) and raw JSON reports in
+`docs/measurements/`. These are smoke benchmarks, not a multilingual baseline
+comparison; mGPT/XGLM results require a separately downloaded model and the
+same held-out corpus.
+
 ### Sample outputs
 
 | Prompt | Generated text |
