@@ -19,6 +19,7 @@ import sys
 import sentencepiece as spm
 import torch
 
+from nepali_gpt2.checkpoint import normalize_state_dict
 from nepali_gpt2.data.dataset import evaluate_perplexity
 from nepali_gpt2.model import NepaliGPT
 
@@ -41,23 +42,33 @@ def load_model_and_tokenizer(
     """
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-    device = torch.device(device)
+    torch_device = torch.device(device)
 
     # map_location lets a CUDA-trained checkpoint load onto CPU and vice
     # versa, so serve/inference scripts can share the same weights.
-    ckpt = torch.load(ckpt_path, map_location=device)
+    ckpt = torch.load(ckpt_path, map_location=torch_device, weights_only=True)
     cfg = ckpt["cfg"]
 
-    model = NepaliGPT(cfg).to(device)
-    model.load_state_dict(ckpt["model"])
+    model = NepaliGPT(cfg)
+    precision = ckpt.get("precision", "fp32")
+    if precision != "fp32":
+        from nepali_gpt2.quantization import convert
+
+        if torch_device.type != "cpu":
+            raise ValueError("Quantized checkpoints currently require CPU")
+        model = convert(model, precision)
+    model = model.to(torch_device)
+    model.load_state_dict(normalize_state_dict(ckpt["model"], cfg))
     model.eval()
 
     sp = spm.SentencePieceProcessor()
     if not sp.load(tok_path):
         raise FileNotFoundError(f"Tokenizer not found: {tok_path}")
 
-    print(f"Loaded checkpoint: step={ckpt['step']}, val_loss={ckpt['val_loss']:.4f}")
-    return model, sp, cfg, device
+    if sp.get_piece_size() != cfg["vocab_size"]:
+        raise ValueError("Tokenizer vocabulary does not match checkpoint")
+    print(f"Loaded checkpoint: {ckpt_path}")
+    return model, sp, cfg, torch_device
 
 
 @torch.no_grad()
@@ -95,6 +106,7 @@ def generate(
         device=device,
     )
 
+    prompt_length = ids.shape[1]
     for _ in range(max_new):
         # Slice the window to `ctx` so prompts longer than the context still
         # fit through the (fixed-size) positional embedding table.
@@ -121,7 +133,7 @@ def generate(
             break
         ids = torch.cat([ids, next_id], dim=1)
 
-    return sp.decode(ids[0, 1:].tolist())
+    return sp.decode(ids[0, prompt_length:].tolist())
 
 
 @torch.no_grad()

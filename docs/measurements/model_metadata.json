@@ -1,0 +1,6 @@
+{
+  "data": "Nepali Wikipedia and OSCAR Nepali are described in the source Colab notebook. The raw corpus and held-out split are not included in this export; verify upstream licenses before redistribution.",
+  "training": "Base checkpoint supplied by the project owner from the Colab notebook. Architecture is GPT-2 style with 16,000 SentencePiece tokens, 512 context, 512 hidden width, 8 layers and 8 heads. The exported checkpoint does not contain optimizer state or independently verifiable training-step metadata.",
+  "evaluation": "The supplied base checkpoint scores 3/5 on the repository cloze smoke set. Full generation and CPU benchmark reports are stored in docs/measurements when available. This score is not a broad quality benchmark.",
+  "limitations": "This is a base language model, not instruction tuned. It may repeat text, hallucinate facts and reflect source-data bias. Held-out perplexity, multilingual baseline, human instruction-following scores and CUDA measurements are unavailable in this export."
+}

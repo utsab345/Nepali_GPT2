@@ -1,0 +1,21 @@
+{
+  "source": "https://drive.google.com/file/d/1eYcuB499ySOp1Dz8hqNcacFKvA-erplu/view",
+  "archive_sha256": "aa0c162aa80958905356fe980c895f6528a0ff60168070aa348eeed914653634",
+  "files": {
+    "model.pt": "51e0a7b84e8f21e7cbea4aa8fedc2d917be2f17204d1fcfab45f1be3e26bfbf6",
+    "tokenizer.model": "6b5ad5fe8883e83e371cd5671f369f852a35d213f9e5939484e696dcc053b8ce",
+    "config.json": "977df3342ca18d7b74915ae6457a8d9c714d66e629ac108f336e600ee67ad3ce"
+  },
+  "cfg": {
+    "vocab_size": 16000,
+    "context_length": 512,
+    "emb_dim": 512,
+    "n_heads": 8,
+    "n_layers": 8,
+    "drop_rate": 0.1,
+    "qkv_bias": false
+  },
+  "parameters": 33661952,
+  "torch_version": "2.14.0+cpu",
+  "cuda_available": false
+}

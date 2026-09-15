@@ -312,7 +312,7 @@ curl -s http://localhost:8000/generate -H 'Content-Type: application/json' \
 ## Inference & optimization
 
 Quantization and latency experiments (issues #12/#13). Both write
-timestamped reports to `eval/results/`; runs are CPU-only by design.
+timestamped reports to `eval/results/`; the benchmark supports CPU/CUDA; quantization runs on CPU.
 
 ```bash
 # latency (p50/p95), tokens/sec, prefill + peak memory
@@ -362,3 +362,11 @@ Issues, pull requests and Nepali-language datasets are all welcome. If you exten
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Roadmap workflows
+
+See [reproduction instructions](docs/REPRODUCE.md) for instruction-data preparation,
+SFT, paired evaluation, batched benchmarks, quantization, ablations and Hugging Face
+export to `utsabdahal34`. [Issue status](docs/ROADMAP_STATUS.md) distinguishes
+implemented tooling from experiments and publishing that still require artifacts.
+The [changelog](CHANGELOG.md) tracks the pending v1.0.0 release.

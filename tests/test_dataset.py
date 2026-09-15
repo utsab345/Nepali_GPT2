@@ -1,38 +1,31 @@
-"""Regression tests for dataset evaluation boundaries."""
-
 import math
 
 import numpy as np
+import pytest
 import torch
 
-from nepali_gpt2.data.dataset import evaluate_perplexity
+from nepali_gpt2.data.dataset import TokenDataset, evaluate_perplexity
 
 
-class ConstantLossModel(torch.nn.Module):
-    def __init__(self, loss: float) -> None:
-        super().__init__()
-        self.loss = torch.tensor(loss)
-        self.calls = 0
-
-    def forward(self, _x, _y):
-        self.calls += 1
-        return None, self.loss
+class UniformModel(torch.nn.Module):
+    def forward(self, x, y):
+        return None, torch.tensor(math.log(10.0))
 
 
-def test_negative_max_batches_evaluates_the_full_validation_loader(tmp_path) -> None:
-    path = tmp_path / "tokens.npy"
-    np.asarray(np.arange(120, dtype=np.int32)).tofile(path)
-    model = ConstantLossModel(2.0)
-
-    result = evaluate_perplexity(
-        model,
-        torch.device("cpu"),
-        token_cache=str(path),
-        ctx=4,
-        batch_size=8,
-        max_batches=-1,
-        use_amp=False,
+def test_perplexity_unlimited_restores_eval_mode(tmp_path):
+    cache = tmp_path / "tokens.npy"
+    np.ones(400, dtype=np.int32).tofile(cache)
+    model = UniformModel().eval()
+    value = evaluate_perplexity(
+        model, torch.device("cpu"), str(cache), ctx=4, batch_size=3, max_batches=-1
     )
+    assert value == pytest.approx(10.0)
+    assert not model.training
 
-    assert model.calls == 1
-    assert math.isclose(result, math.exp(2.0))
+
+def test_empty_validation_rejected(tmp_path):
+    cache = tmp_path / "tokens.npy"
+    np.ones(20, dtype=np.int32).tofile(cache)
+    assert len(TokenDataset(np.ones(2), 4)) == 0
+    with pytest.raises(ValueError, match="no target tokens"):
+        evaluate_perplexity(UniformModel(), torch.device("cpu"), str(cache), ctx=4)

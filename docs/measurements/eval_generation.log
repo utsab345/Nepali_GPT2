@@ -1,0 +1,3 @@
+Loaded checkpoint: ckpt/colab-base/model.pt
+distinct-1: 0.371 | distinct-2: 0.615 | repetition: 0.183 | mean sent len: 39.6 tokens
+Report saved → docs/measurements/gen_20260915_112623Z.json

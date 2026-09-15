@@ -89,7 +89,7 @@ def run(args: argparse.Namespace) -> dict:
     for ex in examples:
         candidates = ex["answer"] + ex["distractors"]
         scores = score_candidates(model, sp, cfg, device, ex["prefix"], candidates)
-        predicted = max(scores, key=scores.get)
+        predicted = max(scores, key=lambda candidate: scores[candidate])
         is_correct = predicted in ex["answer"]
         correct += int(is_correct)
         details.append(

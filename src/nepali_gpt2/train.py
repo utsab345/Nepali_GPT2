@@ -20,6 +20,7 @@ import random
 import sys
 import time
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import torch
@@ -99,7 +100,12 @@ def train(args: argparse.Namespace) -> None:
         print(f"GPU    : {torch.cuda.get_device_name(0)}")
         print(f"VRAM   : {props.total_memory / 1e9:.1f} GB")
 
-    cfg_dict = MODEL_CONFIGS[args.model_size]
+    cfg_dict = dict(MODEL_CONFIGS[args.model_size])
+    if args.context_length is not None:
+        cfg_dict["context_length"] = args.context_length
+    if args.vocab_size is not None:
+        cfg_dict["vocab_size"] = args.vocab_size
+    cfg_dict["position_encoding"] = args.position_encoding
     ctx = cfg_dict["context_length"]
 
     # Token cache produced by data.prep.
@@ -142,7 +148,7 @@ def train(args: argparse.Namespace) -> None:
     # torch.compile gives a free speed-up on modern Triton-equipped GPUs.
     # Guarded so CPU-only machines (where it occasionally regresses) skip it.
     if hasattr(torch, "compile") and torch.cuda.is_available():
-        model = torch.compile(model)
+        model = cast(NepaliGPT, torch.compile(model))
         print("torch.compile applied")
 
     optimizer = build_optimizer(model, args.lr, args.weight_decay)
@@ -161,7 +167,7 @@ def train(args: argparse.Namespace) -> None:
         torch.save(
             {
                 "step": step,
-                "model": model.state_dict(),
+                "model": getattr(model, "_orig_mod", model).state_dict(),
                 "optimizer": optimizer.state_dict(),
                 "val_loss": val_loss,
                 "cfg": cfg_dict,
@@ -275,6 +281,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             type=type(TRAIN_DEFAULTS[key]),
             default=TRAIN_DEFAULTS[key],
         )
+    p.add_argument("--context-length", type=int)
+    p.add_argument("--vocab-size", type=int)
+    p.add_argument(
+        "--position-encoding", choices=["learned", "rope"], default="learned"
+    )
     return p.parse_args(argv)
 
 

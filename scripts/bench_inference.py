@@ -1,21 +1,10 @@
-"""CLI: inference latency / throughput / memory benchmark (roadmap issue #12).
-
-Usage::
-
-    python scripts/bench_inference.py --ckpt ckpt/best.pt --tok tokenizer/nepali_bpe.model
-                                      --n 20 --max-new 64 --prompt-len 64
-
-Reports per-sample latency (p50/p95), tokens/sec, prefill latency and peak
-memory (RSS + CUDA). Appends a timestamped JSON report to ``eval/results/``.
-"""
+"""Benchmark fixed-length batched decoding on CPU or CUDA (no KV cache)."""
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import resource
-import statistics
 import sys
 import time
 from datetime import datetime, timezone
@@ -24,150 +13,135 @@ from pathlib import Path
 import torch
 
 _ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(_ROOT / "src"))
-
-from nepali_gpt2.generate import generate, load_model_and_tokenizer  # noqa: E402
-
-_BASE_PROMPT = "नेपाल एक सुन्दर हिमाली देश हो। "
+from nepali_gpt2.generate import load_model_and_tokenizer  # noqa: E402
 
 
-def _peak_rss_kb() -> int:
-    return int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+def _percentile(values, q):
+    values = sorted(values)
+    index = (len(values) - 1) * q
+    lo = int(index)
+    return values[lo] + (values[min(lo + 1, len(values) - 1)] - values[lo]) * (
+        index - lo
+    )
 
 
-def _percentile(values: list[float], q: float) -> float:
-    if not values:
-        return 0.0
-    idx = min(len(values) - 1, int(round(q * (len(values) - 1))))
-    return sorted(values)[idx]
+def synchronize(device):
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
 
 
-def _make_prompt(sp, length: int) -> str:
-    """A prompt of roughly ``length`` BPE tokens (windowed by the model)."""
-    per = max(len(sp.encode(_BASE_PROMPT, out_type=int)), 1)
-    raw = _BASE_PROMPT * (length // per + 2)
-    return sp.decode(sp.encode(raw, out_type=int)[:length])
+@torch.inference_mode()
+def decode(model, ids, context_length, max_new):
+    """Fixed token count includes EOS; measures model throughput, not text quality."""
+    for _ in range(max_new):
+        logits, _ = model(ids[:, -context_length:])
+        ids = torch.cat((ids, logits[:, -1].argmax(-1, keepdim=True)), dim=1)
+    return ids
 
 
-def run(args: argparse.Namespace) -> None:
-    started = time.monotonic()
-    model, sp, cfg, device = load_model_and_tokenizer(args.ckpt, args.tok, args.device)
-    if args.threads > 0:
-        torch.set_num_threads(args.threads)
-    load_s = time.monotonic() - started
-    base_rss_kb = _peak_rss_kb()
-    n_params = model.num_params()
-
-    prompt = _make_prompt(sp, args.prompt_len)
-    ids = torch.tensor(
-        [[sp.bos_id()] + sp.encode(prompt, out_type=int)],
-        dtype=torch.long,
-        device=device,
-    )[:, -cfg["context_length"] :]
-
-    # Prefill: pure single for-the-whole-prompt forward pass latency.
-    with torch.no_grad():
-        prefill = []
-        for _ in range(max(args.warmup, 1)):
-            t0 = time.monotonic()
-            model(ids)
-            if torch.cuda.is_available():
-                torch.cuda.synchronize()
-            prefill.append((time.monotonic() - t0) * 1000)
-
-    # Decode: N independent generations of up to max_new tokens.
-    gen_times: list[float] = []
-    gen_tokens: list[int] = []
-    for _ in range(args.n):
-        torch.manual_seed(args.seed)
-        t0 = time.monotonic()
-        out = generate(
-            model,
-            sp,
-            cfg,
-            device,
-            prompt=prompt,
-            max_new=args.max_new,
-            temperature=args.temperature,
-            top_k=args.top_k,
-            top_p=args.top_p,
+def benchmark_case(model, cfg, device, batch_size, prompt_len, max_new, n, warmup):
+    if min(batch_size, prompt_len, max_new, n) < 1 or warmup < 0:
+        raise ValueError(
+            "Batch, prompt, generation length and samples must be positive"
         )
-        dt = time.monotonic() - t0
-        gen_times.append(dt)
-        gen_tokens.append(len(sp.encode(out, out_type=int)))
-
-    total_s = sum(gen_times)
-    tokens_per_s = sum(gen_tokens) / total_s if total_s else 0.0
-
-    report = {
-        "task": "inference_benchmark",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "model": str(args.ckpt),
-        "config_hash": hashlib.sha256(
-            json.dumps(cfg, sort_keys=True).encode()
-        ).hexdigest()[:12],
-        "device": str(device),
-        "param_count": n_params,
-        "load_seconds": round(load_s, 3),
-        "n_samples": args.n,
-        "max_new": args.max_new,
-        "prompt_len_tokens": args.prompt_len,
-        "threads": args.threads if args.threads > 0 else "auto",
-        "prefill_p50_ms": round(_percentile(prefill, 0.5), 2),
-        "gen_p50_ms": round(_percentile(gen_times, 0.5) * 1000, 2),
-        "gen_p95_ms": round(_percentile(gen_times, 0.95) * 1000, 2),
-        "tokens_per_second": round(tokens_per_s, 2),
-        "mean_tokens_per_sample": round(statistics.fmean(gen_tokens), 1),
-        "peak_rss_mb": round(_peak_rss_kb() / 1024, 1),
-        "baseline_rss_after_load_mb": round(base_rss_kb / 1024, 1),
-        "peak_cuda_mb": (
-            round(torch.cuda.max_memory_allocated() / 1e6, 1)
-            if torch.cuda.is_available()
-            else 0.0
+    if prompt_len > cfg["context_length"]:
+        raise ValueError("Prompt length exceeds model context")
+    ids = torch.ones((batch_size, prompt_len), dtype=torch.long, device=device)
+    model.eval()
+    for _ in range(warmup):
+        decode(model, ids, cfg["context_length"], max_new)
+    synchronize(device)
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats(device)
+    prefill, latency = [], []
+    for _ in range(n):
+        synchronize(device)
+        start = time.perf_counter()
+        with torch.inference_mode():
+            model(ids)
+        synchronize(device)
+        prefill.append(time.perf_counter() - start)
+        start = time.perf_counter()
+        decode(model, ids, cfg["context_length"], max_new)
+        synchronize(device)
+        latency.append(time.perf_counter() - start)
+    rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return dict(
+        batch_size=batch_size,
+        prompt_len_tokens=prompt_len,
+        max_new=max_new,
+        n_samples=n,
+        prefill_p50_ms=_percentile(prefill, 0.5) * 1000,
+        gen_p50_ms=_percentile(latency, 0.5) * 1000,
+        gen_p95_ms=_percentile(latency, 0.95) * 1000,
+        tokens_per_second=batch_size * max_new * n / sum(latency),
+        generated_tokens=batch_size * max_new * n,
+        process_peak_rss_mb=rss / (1024**2 if sys.platform == "darwin" else 1024),
+        peak_cuda_mb=(
+            torch.cuda.max_memory_allocated(device) / 1e6
+            if device.type == "cuda"
+            else 0
         ),
-    }
-
-    results_dir = Path(args.results_dir)
-    results_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%SZ")
-    out = results_dir / f"bench_infer_{stamp}.json"
-    out.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
-
-    print(f"device={report['device']}  params={n_params:,}")
-    print(
-        f"load={load_s:.1f}s  prefill(p50)={report['prefill_p50_ms']}ms  "
-        f"gen(p50/p95)={report['gen_p50_ms']}/{report['gen_p95_ms']}ms"
     )
-    print(
-        f"throughput={tokens_per_s:.1f} tok/s  "
-        f"mem(RSS)={report['peak_rss_mb']}MB  mem(CUDA)={report['peak_cuda_mb']}MB"
-    )
-    print(f"Report saved → {out}")
 
 
-def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(
-        description="Benchmark NepaliGPT inference latency, throughput and memory.",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
+def _parse_args(argv=None):
+    p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--ckpt", default="ckpt/best.pt")
     p.add_argument("--tok", default="tokenizer/nepali_bpe.model")
     p.add_argument("--device", default=None)
-    p.add_argument("--n", type=int, default=20, help="number of generations to time")
-    p.add_argument("--max-new", type=int, default=64, help="tokens per generation")
-    p.add_argument("--prompt-len", type=int, default=64, help="prompt length in tokens")
-    p.add_argument("--warmup", type=int, default=2, help="prefill warmup passes")
-    p.add_argument("--threads", type=int, default=0, help="torch threads (0 = auto)")
+    p.add_argument("--n", type=int, default=20)
+    p.add_argument("--max-new", type=int, default=64)
+    p.add_argument("--prompt-len", type=int, nargs="+", default=[64])
+    p.add_argument("--batch-sizes", type=int, nargs="+", default=[1])
+    p.add_argument("--warmup", type=int, default=2)
+    p.add_argument("--threads", type=int, default=0)
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--temperature", type=float, default=1.0)
-    p.add_argument("--top-k", type=int, default=1)
-    p.add_argument("--top-p", type=float, default=1.0)
     p.add_argument("--results-dir", default="eval/results")
     return p.parse_args(argv)
 
 
-def main(argv: list[str] | None = None) -> int:
+def run(args):
+    if args.threads > 0:
+        torch.set_num_threads(args.threads)
+    torch.manual_seed(args.seed)
+    start = time.perf_counter()
+    model, _, cfg, device = load_model_and_tokenizer(args.ckpt, args.tok, args.device)
+    synchronize(device)
+    load_s = time.perf_counter() - start
+    cases = [
+        benchmark_case(
+            model, cfg, device, batch, length, args.max_new, args.n, args.warmup
+        )
+        for batch in args.batch_sizes
+        for length in args.prompt_len
+    ]
+    report = dict(
+        task="inference_benchmark",
+        model=args.ckpt,
+        device=str(device),
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        cfg=cfg,
+        param_count=model.num_params(),
+        load_seconds=load_s,
+        torch_version=str(torch.__version__),
+        threads=torch.get_num_threads(),
+        cases=cases,
+        notes="Greedy fixed-length decoding; EOS does not stop. RSS is process lifetime high-water mark; no KV cache.",
+    )
+    if len(cases) == 1:
+        report.update(cases[0])
+    directory = Path(args.results_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%fZ")
+    out = directory / f"bench_infer_{stamp}.json"
+    out.write_text(json.dumps(report, indent=2) + "\n")
+    print(json.dumps(report, indent=2))
+    return report
+
+
+def main(argv=None):
     run(_parse_args(argv))
     return 0
 

@@ -78,3 +78,21 @@ def test_presets_valid() -> None:
 
 def test_defaults_have_model_size() -> None:
     assert TRAIN_DEFAULTS["model_size"] in MODEL_CONFIGS
+
+
+def test_rope_preserves_causality_and_checkpoint(tmp_path):
+    cfg = dict(tiny_cfg(), position_encoding="rope")
+    model = NepaliGPT(cfg).eval()
+    a = torch.randint(1, 1000, (1, 16))
+    b = a.clone()
+    b[:, 8:] = (b[:, 8:] + 1) % 1000
+    with torch.no_grad():
+        first, _ = model(a)
+        second, _ = model(b)
+    torch.testing.assert_close(first[:, :8], second[:, :8])
+    path = tmp_path / "rope.pt"
+    torch.save(model.state_dict(), path)
+    restored = NepaliGPT(cfg).eval()
+    restored.load_state_dict(torch.load(path, weights_only=True))
+    with torch.no_grad():
+        torch.testing.assert_close(first, restored(a)[0])

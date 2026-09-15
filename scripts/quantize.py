@@ -17,7 +17,6 @@ Appends a timestamped comparison table to ``eval/results/``.
 from __future__ import annotations
 
 import argparse
-import copy
 import hashlib
 import json
 import sys
@@ -26,7 +25,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import torch
-from torch.quantization import quantize_dynamic
 
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT))
@@ -34,6 +32,8 @@ sys.path.insert(0, str(_ROOT / "src"))
 
 from nepali_gpt2.data.dataset import evaluate_perplexity  # noqa: E402
 from nepali_gpt2.generate import generate, load_model_and_tokenizer  # noqa: E402
+from nepali_gpt2.quantization import convert  # noqa: E402
+from scripts.bench_inference import benchmark_case  # noqa: E402
 
 PROMPT = "नेपाल एक सुन्दर हिमाली देश हो।"
 MAX_NEW = 32
@@ -44,9 +44,7 @@ def _model_bytes(model) -> int:
 
 
 def _make_variants(model) -> dict[str, torch.nn.Module]:
-    fp16 = copy.deepcopy(model).half()
-    int8 = quantize_dynamic(copy.deepcopy(model), {torch.nn.Linear}, dtype=torch.qint8)
-    return {"fp32": model, "fp16": fp16, "int8": int8}
+    return {name: convert(model, name) for name in ("fp32", "fp16", "int8", "int4")}
 
 
 def _generation_speed(model, sp, cfg, device: str) -> float:
@@ -59,6 +57,8 @@ def _generation_speed(model, sp, cfg, device: str) -> float:
 
 def run(args: argparse.Namespace) -> None:
     # Quantization runs on CPU; load there regardless of any CUDA default.
+    if args.device != "cpu":
+        raise ValueError("Quantization experiments require --device cpu")
     model, sp, cfg, _ = load_model_and_tokenizer(
         args.ckpt, args.tok, args.device or "cpu"
     )
@@ -78,6 +78,8 @@ def run(args: argparse.Namespace) -> None:
         if not cache.exists() and not args.skip_ppl:
             print(f"note: {args.token_cache} not found — skipping perplexity")
         ppl_kwargs = {}
+    if args.skip_ppl:
+        ppl_kwargs = {}
 
     table = {}
     for name, variant in variants.items():
@@ -86,19 +88,32 @@ def run(args: argparse.Namespace) -> None:
             {"cfg": cfg, "precision": name, "model": variant.state_dict()}, state_path
         )
 
-        speed = _generation_speed(variant, sp, cfg, device)
+        measurements = benchmark_case(
+            variant,
+            cfg,
+            torch.device(device),
+            1,
+            min(32, cfg["context_length"]),
+            MAX_NEW,
+            args.n,
+            1,
+        )
+        speed = measurements["tokens_per_second"]
         ppl = None
         if ppl_kwargs:
             ppl = evaluate_perplexity(
                 variant,
                 torch.device(device),
                 max_batches=args.ppl_batches,
-                **ppl_kwargs,
+                ctx=cfg["context_length"],
+                use_amp=False,
+                token_cache=str(cache),
             )
 
         table[name] = {
             "size_mb": round(state_path.stat().st_size / 1e6, 2),
-            "param_bytes_mb": round(_model_bytes(variant) / 1e6, 2),
+            "process_peak_rss_mb": measurements["process_peak_rss_mb"],
+            "gen_p50_ms": measurements["gen_p50_ms"],
             "tokens_per_second": round(speed, 2),
             "perplexity": round(ppl, 3) if ppl else None,
         }
@@ -110,7 +125,7 @@ def run(args: argparse.Namespace) -> None:
         "config_hash": config_hash,
         "device": device,
         "variants": table,
-        "notes": "INT8 uses torch.quantization.quantize_dynamic on Linear layers (CPU).",
+        "notes": "INT8 uses dynamic Linear quantization (CPU). INT4 packs Linear weights and dequantizes each forward; it is not an optimized INT4 kernel. RSS is cumulative process high-water mark, not isolated variant memory.",
     }
 
     results_dir = Path(args.results_dir)
@@ -139,6 +154,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--outdir", default="ckpt/quantized")
     p.add_argument("--device", default="cpu")
     p.add_argument("--token-cache", default="data/tokens.npy")
+    p.add_argument("--n", type=int, default=5)
     p.add_argument("--ppl-batches", type=int, default=2)
     p.add_argument("--skip-ppl", action="store_true")
     p.add_argument("--results-dir", default="eval/results")

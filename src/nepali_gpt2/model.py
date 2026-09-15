@@ -28,6 +28,8 @@ import torch.nn as nn
 class MultiHeadAttention(nn.Module):
     """Causal multi-head self-attention with a learned output projection."""
 
+    mask: torch.Tensor
+
     def __init__(
         self,
         emb_dim: int,
@@ -35,12 +37,16 @@ class MultiHeadAttention(nn.Module):
         dropout: float,
         n_heads: int,
         qkv_bias: bool = False,
+        position_encoding: str = "learned",
     ) -> None:
         super().__init__()
         assert emb_dim % n_heads == 0, "emb_dim must be divisible by n_heads"
         self.n_heads = n_heads
         self.emb_dim = emb_dim
         self.head_dim = emb_dim // n_heads
+        self.position_encoding = position_encoding
+        if position_encoding == "rope" and self.head_dim % 2:
+            raise ValueError("RoPE requires an even head dimension")
 
         # wq/wk/wv project the input into query/key/value space; the
         # `qkv_bias=False` knob mirrors GPT-2, where LayerNorm already
@@ -60,12 +66,26 @@ class MultiHeadAttention(nn.Module):
             persistent=False,
         )
 
+    def rotate(self, x: torch.Tensor) -> torch.Tensor:
+        frequency = 10000.0 ** (
+            -torch.arange(0, self.head_dim, 2, device=x.device).float() / self.head_dim
+        )
+        angle = torch.arange(x.shape[-2], device=x.device).float()[:, None] * frequency
+        cosine, sine = angle.cos().to(x.dtype), angle.sin().to(x.dtype)
+        even, odd = x[..., 0::2], x[..., 1::2]
+        return torch.stack(
+            (even * cosine - odd * sine, even * sine + odd * cosine), dim=-1
+        ).flatten(-2)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, t, _ = x.shape
         # Split each head out of the last dim: (B, T, H*d) -> (B, H, T, d).
         q = self.wq(x).view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
         k = self.wk(x).view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
         v = self.wv(x).view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
+
+        if self.position_encoding == "rope":
+            q, k = self.rotate(q), self.rotate(k)
 
         # Scaled dot-product attention. The 1/sqrt(d) factor keeps the logit
         # variance near 1 so softmax does not saturate as d grows.
@@ -105,6 +125,7 @@ class TransformerBlock(nn.Module):
             cfg["drop_rate"],
             cfg["n_heads"],
             cfg["qkv_bias"],
+            cfg.get("position_encoding", "learned"),
         )
         self.ff = FeedForward(cfg)
         self.ln1 = nn.LayerNorm(cfg["emb_dim"])
@@ -128,12 +149,18 @@ class NepaliGPT(nn.Module):
     def __init__(self, cfg: dict) -> None:
         super().__init__()
         self.cfg = cfg
+        if cfg.get("position_encoding", "learned") not in {"learned", "rope"}:
+            raise ValueError("position_encoding must be learned or rope")
 
         self.tok_emb = nn.Embedding(cfg["vocab_size"], cfg["emb_dim"])
         # Learned positional embeddings. Each absolute position 0..ctx-1 gets
         # its own trainable vector (GPT-2 style, vs. sinusoidal in the
         # original Transformer).
-        self.pos_emb = nn.Embedding(cfg["context_length"], cfg["emb_dim"])
+        self.pos_emb = (
+            nn.Embedding(cfg["context_length"], cfg["emb_dim"])
+            if cfg.get("position_encoding", "learned") == "learned"
+            else None
+        )
         self.drop = nn.Dropout(cfg["drop_rate"])
         self.blocks = nn.Sequential(
             *[TransformerBlock(cfg) for _ in range(cfg["n_layers"])]
@@ -181,7 +208,12 @@ class NepaliGPT(nn.Module):
                 f"sequence length ({t}) exceeds context_length ({self.cfg['context_length']})"
             )
         pos = torch.arange(t, device=idx.device)
-        x = self.drop(self.tok_emb(idx) + self.pos_emb(pos))
+        if t < 1 or t > self.cfg["context_length"]:
+            raise ValueError("Sequence length must be between 1 and context_length")
+        x = self.tok_emb(idx)
+        if self.pos_emb is not None:
+            x = x + self.pos_emb(pos)
+        x = self.drop(x)
         x = self.blocks(x)
         x = self.ln_f(x)
         logits = self.head(x)

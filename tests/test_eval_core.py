@@ -61,3 +61,10 @@ def test_table_renders_groups_by_model(tmp_path: Path) -> None:
 
 def test_table_empty_dir(tmp_path: Path) -> None:
     assert "No evaluation results" in build_markdown_table(tmp_path)
+
+
+def test_table_reads_qa_accuracy(tmp_path):
+    (tmp_path / "qa.json").write_text(
+        json.dumps(dict(task="qa_accuracy", ckpt="base", accuracy=0.75))
+    )
+    assert "0.750" in build_markdown_table(tmp_path)

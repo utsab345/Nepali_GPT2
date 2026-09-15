@@ -31,6 +31,7 @@ from eval.metrics import (  # noqa: E402
 )
 
 from nepali_gpt2.generate import generate, load_model_and_tokenizer  # noqa: E402
+from nepali_gpt2.train import seed_everything  # noqa: E402
 
 DEFAULT_PROMPTS = ["नेपाल एक सुन्दर", "हाम्रो देशको इतिहास"]
 
@@ -43,6 +44,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--prompt", action="append", default=None, help="prompt (repeatable)"
     )
+    p.add_argument("--seed", type=int, default=42)
     p.add_argument("--num-samples", type=int, default=5, help="completions per prompt")
     p.add_argument(
         "--max-new", type=int, default=80, help="tokens to generate per sample"
@@ -64,6 +66,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def run(args: argparse.Namespace) -> dict:
+    seed_everything(args.seed)
     model, sp, cfg, device = load_model_and_tokenizer(args.ckpt, args.tok, args.device)
 
     prompts = args.prompt or DEFAULT_PROMPTS
@@ -89,6 +92,7 @@ def run(args: argparse.Namespace) -> dict:
         per_prompt.append(
             {
                 "prompt": prompt,
+                "completions": samples,
                 "samples": [
                     summarize_generation(sp.encode(t, out_type=str)) for t in samples
                 ],
@@ -117,6 +121,7 @@ def run(args: argparse.Namespace) -> dict:
             json.dumps(cfg, sort_keys=True).encode()
         ).hexdigest()[:12],
         "generation_args": {
+            "seed": args.seed,
             "num_samples": args.num_samples,
             "max_new": args.max_new,
             "temperature": args.temperature,

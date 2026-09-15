@@ -58,6 +58,7 @@ def run(args: argparse.Namespace) -> float:
         model,
         device,
         token_cache=args.token_cache,
+        ctx=cfg["context_length"],
         max_batches=args.max_batches,
     )
 

@@ -93,9 +93,8 @@ def get_model() -> tuple[Any, Any, dict[str, Any], Any]:
         if "model" not in _state:
             from nepali_gpt2.generate import load_model_and_tokenizer
 
-            device = MODEL_DEVICE or None
             model, sp, cfg, device = load_model_and_tokenizer(
-                MODEL_CKPT, MODEL_TOK, device
+                MODEL_CKPT, MODEL_TOK, MODEL_DEVICE or None
             )
             _state.update(
                 model=model,

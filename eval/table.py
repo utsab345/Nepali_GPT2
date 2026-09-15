@@ -14,7 +14,7 @@ _COLUMNS = [
     ("distinct-1", "distinct-1"),
     ("distinct-2", "distinct-2"),
     ("repetition", "Repetition"),
-    ("tokens_per_sec", "Latency (tok/s)"),
+    ("tokens_per_sec", "Throughput (tok/s)"),
 ]
 
 
@@ -41,6 +41,11 @@ def build_markdown_table(results_dir: Path) -> str:
     for rec in _read_results(results_dir):
         model = str(rec.get("model") or rec.get("ckpt") or "unknown")
         row = rows.setdefault(model, {"model": model})
+        if rec.get("task") == "qa_accuracy":
+            row["QA acc"] = rec.get("accuracy")
+        if rec.get("task") == "inference_benchmark":
+            row["tokens_per_sec"] = rec.get("tokens_per_second")
+            row["params"] = rec.get("param_count")
         if "PPL" in rec:  # lm_perplexity
             row["PPL"] = rec["PPL"]
         agg = rec.get("aggregate")

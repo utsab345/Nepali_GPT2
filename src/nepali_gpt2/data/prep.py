@@ -51,6 +51,7 @@ def setup_dirs() -> None:
 
 # ---- Wikipedia -----------------------------------------------------------
 
+
 def download_wikipedia() -> None:
     """Download Nepali Wikipedia via HuggingFace datasets (streaming)."""
     if WIKI_FILE.exists():
@@ -92,6 +93,7 @@ def download_wikipedia() -> None:
 
 # ---- OSCAR web corpus ----------------------------------------------------
 
+
 def download_oscar() -> None:
     """Download the OSCAR Nepali corpus from Kaggle (requires credentials)."""
     if WEB_FILE.exists():
@@ -104,8 +106,15 @@ def download_oscar() -> None:
     if not oscar_zip.exists():
         print("Downloading OSCAR Nepali corpus from Kaggle…")
         subprocess.run(
-            ["kaggle", "datasets", "download", "-d", "hsebarp/oscar-corpus-nepali",
-             "-p", str(DATA_DIR)],
+            [
+                "kaggle",
+                "datasets",
+                "download",
+                "-d",
+                "hsebarp/oscar-corpus-nepali",
+                "-p",
+                str(DATA_DIR),
+            ],
             check=True,
         )
         print("Download complete ✓")
@@ -158,6 +167,7 @@ def download_oscar() -> None:
 
 # ---- Merge ---------------------------------------------------------------
 
+
 def merge_corpora() -> None:
     if CORPUS_FILE.exists():
         print("Merged corpus already exists ✓")
@@ -178,6 +188,7 @@ def merge_corpora() -> None:
 
 # ---- Tokenizer -----------------------------------------------------------
 
+
 def train_tokenizer() -> spm.SentencePieceProcessor:
     if not Path(TOK_PREFIX + ".model").exists():
         print(f"Training SentencePiece BPE tokenizer (vocab={VOCAB_SIZE})…")
@@ -190,9 +201,14 @@ def train_tokenizer() -> spm.SentencePieceProcessor:
             vocab_size=VOCAB_SIZE,
             model_type="bpe",
             character_coverage=0.9995,
-            pad_id=0, unk_id=1, bos_id=2, eos_id=3,
-            pad_piece="<pad>", unk_piece="<unk>",
-            bos_piece="<s>", eos_piece="</s>",
+            pad_id=0,
+            unk_id=1,
+            bos_id=2,
+            eos_id=3,
+            pad_piece="<pad>",
+            unk_piece="<unk>",
+            bos_piece="<s>",
+            eos_piece="</s>",
             num_threads=os.cpu_count(),
             # SentencePiece shuffles internally; training on the full lexicon
             # can take a while, so cap samples for reproducible quick retrains.
@@ -209,6 +225,7 @@ def train_tokenizer() -> spm.SentencePieceProcessor:
 
 
 # ---- Tokenize ------------------------------------------------------------
+
 
 def tokenize_corpus(sp: spm.SentencePieceProcessor) -> None:
     if TOKEN_CACHE.exists():
@@ -260,7 +277,7 @@ def tokenize_corpus(sp: spm.SentencePieceProcessor) -> None:
     pos = 0
     for path in chunk_files:
         part = np.load(path)
-        merged[pos: pos + len(part)] = part
+        merged[pos : pos + len(part)] = part
         pos += len(part)
         os.remove(path)
     merged.flush()

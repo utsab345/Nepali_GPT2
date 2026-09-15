@@ -42,7 +42,7 @@ class FakeSP:
         return ids
 
     def decode(self, ids: list[int]) -> str:
-        return "".join(self._i2c.get(int(i), "") for i in ids)
+        return "".join(self._i2c.get(int(i), chr(0xE000 + int(i))) for i in ids)
 
     def id_to_piece(self, i: int) -> str:
         return self._i2c.get(int(i), "▁unk")
@@ -78,6 +78,7 @@ def test_causal_mask_ignores_future_tokens() -> None:
 
 
 def test_generate_deterministic_with_fixed_seed() -> None:
+    torch.manual_seed(123)
     cfg = tiny_cfg()
     model = NepaliGPT(cfg).eval()
     sp = FakeSP()
@@ -92,6 +93,7 @@ def test_generate_deterministic_with_fixed_seed() -> None:
 
 
 def test_generate_respects_max_new_bound() -> None:
+    torch.manual_seed(123)
     cfg = tiny_cfg()
     model = NepaliGPT(cfg).eval()
     sp = FakeSP()
@@ -124,6 +126,7 @@ def test_generate_rejects_invalid_sampling_settings() -> None:
 
 
 def test_next_words_returns_sorted_probabilities() -> None:
+    torch.manual_seed(123)
     cfg = tiny_cfg()
     model = NepaliGPT(cfg).eval()
     sp = FakeSP()
