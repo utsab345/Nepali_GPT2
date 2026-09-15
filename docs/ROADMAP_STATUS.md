@@ -14,7 +14,7 @@ No issue should be closed based on scaffolding alone.
 | #6 Base publishing | Validated native checkpoint bundle and model card exporter | Base artifacts received; supply small checkpoint and authenticate to upload to `utsabdahal34` |
 | #7 Instruct publishing | Standard Transformers GPT-2 weight conversion and Instruct model-card support | Supply trained Instruct checkpoint and publish |
 | #12 Inference | CPU/CUDA synchronization, batch/sequence grid, warmup, p50/p95, exact token counts, load time and memory | Run production checkpoints on target CPU/GPU |
-| #13 Quantization | FP32/FP16/dynamic INT8 and packed INT4 reference, reload support, speed/size/PPL reports | Run production checkpoints and publish measured table; optimized INT4 kernel is not implemented |
+| #13 Quantization | FP32/FP16/dynamic INT8 and packed INT4 reference, reload support, real base-model speed/size and cloze quality reports | Optimized INT4 kernel and held-out PPL delta remain optional follow-up |
 | #14 Ablations | Learned/RoPE positions and configurable vocabulary/context; controlled experiment plan | Train matched runs and report PPL, training time, speed and interpretation |
 | #15 Tests | Fresh-clone real tokenizer round trip, model/causal/seed tests, SFT and quantization regression tests | See validation summary below |
 | #16 Release | Changelog and reproduction/run instructions | Validate real artifacts and results, then create/tag the release |
@@ -36,4 +36,4 @@ Image datasets listed under that account do not supply the missing language arti
 - End-to-end CLI smoke checks passed for SFT, a batch/sequence benchmark grid,
   quantization, local Hugging Face export and paired evaluation using a tiny
   synthetic checkpoint. These are software checks, not model-quality results.
-- Base-model CPU measurements are recorded in `docs/measurements/`; CUDA is unavailable.
+- Base-model CPU measurements are recorded in `docs/BASE_RESULTS.md`; CUDA is unavailable.
