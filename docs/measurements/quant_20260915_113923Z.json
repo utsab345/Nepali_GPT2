@@ -1,0 +1,38 @@
+{
+  "task": "quantization_experiment",
+  "timestamp": "2026-09-15T11:39:23.539377+00:00",
+  "model": "ckpt/colab-base/model.pt",
+  "config_hash": "40f160ebe956",
+  "device": "cpu",
+  "variants": {
+    "fp32": {
+      "size_mb": 134.69,
+      "process_peak_rss_mb": 881.82421875,
+      "gen_p50_ms": 3797.0142169997416,
+      "tokens_per_second": 8.43,
+      "perplexity": null
+    },
+    "fp16": {
+      "size_mb": 67.36,
+      "process_peak_rss_mb": 881.82421875,
+      "gen_p50_ms": 17172.111552000388,
+      "tokens_per_second": 1.86,
+      "perplexity": null
+    },
+    "int8": {
+      "size_mb": 67.42,
+      "process_peak_rss_mb": 882.2109375,
+      "gen_p50_ms": 2035.3137709998919,
+      "tokens_per_second": 15.72,
+      "perplexity": null
+    },
+    "int4": {
+      "size_mb": 50.93,
+      "process_peak_rss_mb": 913.51171875,
+      "gen_p50_ms": 8474.22127200025,
+      "tokens_per_second": 3.78,
+      "perplexity": null
+    }
+  },
+  "notes": "INT8 uses dynamic Linear quantization (CPU). INT4 packs Linear weights and dequantizes each forward; it is not an optimized INT4 kernel. RSS is cumulative process high-water mark, not isolated variant memory."
+}

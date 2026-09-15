@@ -325,6 +325,11 @@ python scripts/quantize.py --ckpt ckpt/best.pt --outdir ckpt/quantized
 Results tables will be published here once checkpoint numbers are produced
 on a GPU machine.
 
+The supplied base checkpoint has reproducible CPU results in
+[docs/BASE_RESULTS.md](docs/BASE_RESULTS.md), including batch/sequence latency
+and FP32/FP16/INT8/INT4 size and throughput. GPU results and held-out perplexity
+still require CUDA hardware and the original validation token cache.
+
 ---
 
 ## Development

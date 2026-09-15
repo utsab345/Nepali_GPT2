@@ -1,0 +1,75 @@
+Loaded checkpoint: ckpt/colab-base/model.pt
+{
+  "task": "inference_benchmark",
+  "model": "ckpt/colab-base/model.pt",
+  "device": "cpu",
+  "timestamp": "2026-09-15T11:37:59.150130+00:00",
+  "cfg": {
+    "vocab_size": 16000,
+    "context_length": 512,
+    "emb_dim": 512,
+    "n_heads": 8,
+    "n_layers": 8,
+    "drop_rate": 0.1,
+    "qkv_bias": false
+  },
+  "param_count": 33661952,
+  "load_seconds": 1.031954394999957,
+  "torch_version": "2.14.0+cpu",
+  "threads": 1,
+  "cases": [
+    {
+      "batch_size": 1,
+      "prompt_len_tokens": 32,
+      "max_new": 32,
+      "n_samples": 10,
+      "prefill_p50_ms": 81.79730649976591,
+      "gen_p50_ms": 3625.1424545000646,
+      "gen_p95_ms": 3859.485500150072,
+      "tokens_per_second": 8.762662188742537,
+      "generated_tokens": 320,
+      "process_peak_rss_mb": 508.20703125,
+      "peak_cuda_mb": 0
+    },
+    {
+      "batch_size": 1,
+      "prompt_len_tokens": 128,
+      "max_new": 32,
+      "n_samples": 10,
+      "prefill_p50_ms": 242.76415799999995,
+      "gen_p50_ms": 8775.77765399974,
+      "gen_p95_ms": 9248.97502350002,
+      "tokens_per_second": 3.611037120252141,
+      "generated_tokens": 320,
+      "process_peak_rss_mb": 508.20703125,
+      "peak_cuda_mb": 0
+    },
+    {
+      "batch_size": 4,
+      "prompt_len_tokens": 32,
+      "max_new": 32,
+      "n_samples": 10,
+      "prefill_p50_ms": 236.65606750000734,
+      "gen_p50_ms": 10770.27425849974,
+      "gen_p95_ms": 10927.325652800118,
+      "tokens_per_second": 11.870251726269291,
+      "generated_tokens": 1280,
+      "process_peak_rss_mb": 508.20703125,
+      "peak_cuda_mb": 0
+    },
+    {
+      "batch_size": 4,
+      "prompt_len_tokens": 128,
+      "max_new": 32,
+      "n_samples": 10,
+      "prefill_p50_ms": 900.3156450003189,
+      "gen_p50_ms": 33105.24982250035,
+      "gen_p95_ms": 33738.85063064995,
+      "tokens_per_second": 3.864575301740959,
+      "generated_tokens": 1280,
+      "process_peak_rss_mb": 508.20703125,
+      "peak_cuda_mb": 0
+    }
+  ],
+  "notes": "Greedy fixed-length decoding; EOS does not stop. RSS is process lifetime high-water mark; no KV cache."
+}
