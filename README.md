@@ -76,7 +76,7 @@ API and CLI — everything is reproducible from a blank machine.
 ## Models and live demo
 
 - [NepaliGPT-base on Hugging Face](https://huggingface.co/utsabdahal34/NepaliGPT-base)
-- [NepaliGPT demo Space](https://huggingface.co/spaces/utsabdahal34/NepaliGPT-demo)
+- [Deployable Gradio demo](space/app.py) (HF Space hosting requires account billing)
 
 The base model is downloadable and runnable without retraining. The small and
 instruction-tuned checkpoints are planned releases.

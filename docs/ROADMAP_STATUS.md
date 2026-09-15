@@ -17,7 +17,7 @@ No issue should be closed based on scaffolding alone.
 | #13 Quantization | FP32/FP16/dynamic INT8 and packed INT4 reference, reload support, real base-model speed/size and cloze quality reports | Optimized INT4 kernel and held-out PPL delta remain optional follow-up |
 | #14 Ablations | Learned/RoPE positions and configurable vocabulary/context; controlled experiment plan | Train matched runs and report PPL, training time, speed and interpretation |
 | #15 Tests | Fresh-clone real tokenizer round trip, model/causal/seed tests, SFT and quantization regression tests | See validation summary below |
-| #16 Release | Changelog and reproduction/run instructions | Validate real artifacts and results, then create/tag the release |
+| #16 Release | Changelog, reproduction/run instructions, and v1.0.0 GitHub release | Future v1.1/v2.0 releases can follow new artifacts |
 
 ## Required inputs
 
