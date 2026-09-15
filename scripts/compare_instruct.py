@@ -11,10 +11,10 @@ _ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(_ROOT), str(_ROOT / "src")]
 import torch  # noqa: E402
 from eval.metrics import summarize_generation  # noqa: E402
-from scripts.eval_qa import score_candidates  # noqa: E402
 
 from nepali_gpt2.generate import generate, load_model_and_tokenizer  # noqa: E402
 from nepali_gpt2.sft import format_prompt  # noqa: E402
+from scripts.eval_qa import score_candidates  # noqa: E402
 
 
 def main():
