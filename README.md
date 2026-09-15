@@ -1,5 +1,9 @@
 # NepaliGPT
 
+[![CI](https://github.com/utsab345/Nepali_GPT2/actions/workflows/ci.yml/badge.svg)](https://github.com/utsab345/Nepali_GPT2/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/utsab345/Nepali_GPT2)](https://github.com/utsab345/Nepali_GPT2/releases)
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Model-NepaliGPT--base-yellow)](https://huggingface.co/utsabdahal34/NepaliGPT-base)
+
 > A GPT-2 style causal language model trained from scratch on **~41 million tokens** of Nepali text.
 
 **About this project** — NepaliGPT is an end-to-end, reproducible Nepali
@@ -73,6 +77,23 @@ API and CLI — everything is reproducible from a blank machine.
 
 ![Training Loss](assets/train-test.png)
 
+## Benchmarks
+
+The published base checkpoint reaches 8.76 tokens/s at batch 1 and 15.72
+tokens/s with dynamic INT8 on the same Ryzen 5 5500U CPU. INT8 is about 1.9×
+faster than FP32 here and retains the same 3/5 score on the five-item cloze
+smoke set. FP16 is slower on this CPU because half-precision kernels are not
+optimized on this hardware. These are measured CPU results; no external
+baseline or held-out PPL is claimed until the matching corpus is available.
+
+| Model / precision | Cloze | Prompt | Decode p50 | Decode p95 | Throughput |
+|---|---:|---:|---:|---:|---:|
+| NepaliGPT-base FP32 | 3/5 | 32 tokens | 3,625 ms | 3,859 ms | 8.76 tok/s |
+| NepaliGPT-base INT8 | 3/5 | 32 tokens | 2,035 ms | — | 15.72 tok/s |
+| NepaliGPT-base INT4 | 3/5 | 32 tokens | 8,474 ms | — | 3.78 tok/s |
+
+Details and limitations are in [BASE_RESULTS.md](docs/BASE_RESULTS.md).
+
 ## Models and live demo
 
 - [NepaliGPT-base on Hugging Face](https://huggingface.co/utsabdahal34/NepaliGPT-base)
@@ -80,6 +101,13 @@ API and CLI — everything is reproducible from a blank machine.
 
 The base model is downloadable and runnable without retraining. The small and
 instruction-tuned checkpoints are planned releases.
+
+### Instruction-tuned model
+
+SFT support is implemented in [`scripts/sft_train.py`](scripts/sft_train.py),
+with response-only loss masking and reproducible dataset preparation. An
+Instruct checkpoint is not published yet because the reviewed instruction data
+and training run are still outstanding.
 
 ### Published base-model benchmark
 
@@ -395,6 +423,18 @@ Issues, pull requests and Nepali-language datasets are all welcome. If you exten
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Citation
+
+```bibtex
+@software{dahal_nepaligpt,
+  author = {Utsab Dahal},
+  title = {NepaliGPT},
+  year = {2026},
+  url = {https://github.com/utsab345/Nepali_GPT2},
+  version = {1.0.0}
+}
+```
 
 ## Roadmap workflows
 
