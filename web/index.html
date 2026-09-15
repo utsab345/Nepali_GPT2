@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NepaliGPT demo</title>
+<style>body{font:16px system-ui;max-width:760px;margin:3rem auto;padding:0 1rem}textarea{width:100%;min-height:8rem}button{padding:.6rem 1rem;margin:.7rem 0}pre{white-space:pre-wrap;background:#f5f5f5;padding:1rem;border-radius:8px}</style>
+<h1>NepaliGPT</h1>
+<p>Browser client for the NepaliGPT FastAPI service. Set <code>?api=https://your-api.example.com</code> in the URL.</p>
+<textarea id="prompt">नेपाल एक सुन्दर</textarea><br><button id="go">Generate</button><pre id="out">Enter a prompt and click Generate.</pre>
+<script>
+const api = new URLSearchParams(location.search).get('api') || '';
+go.onclick = async () => {
+  out.textContent = 'Generating…';
+  try {
+    const r = await fetch(api.replace(/\/$/, '') + '/generate', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({prompt:prompt.value,max_new:64,temperature:0.8,top_p:0.95})});
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+    out.textContent = data.text || data.completion || JSON.stringify(data, null, 2);
+  } catch (e) { out.textContent = `Request failed: ${e.message}`; }
+};
+</script>

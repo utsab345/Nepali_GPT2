@@ -94,10 +94,23 @@ baseline or held-out PPL is claimed until the matching corpus is available.
 
 Details and limitations are in [BASE_RESULTS.md](docs/BASE_RESULTS.md).
 
+To add a transparent same-corpus baseline after preparing `data/tokens.npy`:
+
+```bash
+python scripts/eval_ngram.py --token-cache data/tokens.npy --vocab-size 16000
+python scripts/benchmark_table.py --results-dir eval/results
+```
+
+This reports a smoothed bigram baseline (PPL and top-1/top-5 accuracy). It is
+deliberately separate from the optional multilingual `transformers` runner so
+that benchmark results never imply an external model was evaluated when it was
+not downloaded.
+
 ## Models and live demo
 
 - [NepaliGPT-base on Hugging Face](https://huggingface.co/utsabdahal34/NepaliGPT-base)
 - [Deployable Gradio demo](space/app.py) (HF Space hosting requires account billing)
+- [Vercel browser client](web/README.md) (connect it to a deployed API)
 
 The base model is downloadable and runnable without retraining. The small and
 instruction-tuned checkpoints are planned releases.

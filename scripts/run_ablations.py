@@ -26,22 +26,29 @@ def main(argv=None):
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--max-steps", type=int, default=15_000)
     p.add_argument("--tokenizer-dir", default="tokenizer")
-    p.add_argument("--token-cache", default="data/tokens.npy")
+    p.add_argument(
+        "--token-cache-template",
+        default="data/ablation/vocab{vocab}/tokens.npy",
+        help="per-vocabulary token cache path; must contain {vocab}",
+    )
     args = p.parse_args(argv)
     if args.max_steps < 1:
         p.error("max-steps must be positive")
+    if "{vocab}" not in args.token_cache_template:
+        p.error("token-cache-template must contain {vocab} so vocab runs cannot share a cache")
     root = Path(args.root)
     root.mkdir(parents=True, exist_ok=True)
     manifest = []
     for vocab, context, position, size in matrix():
         name = f"vocab{vocab}_ctx{context}_{position}_{size}"
         run_dir = root / name
+        token_cache = args.token_cache_template.format(vocab=vocab)
         command = [sys.executable, "-m", "nepali_gpt2", "train", "--model-size", size,
                    "--vocab-size", str(vocab), "--context-length", str(context),
                    "--position-encoding", position, "--max-steps", str(args.max_steps),
-                   "--token-cache", args.token_cache, "--ckpt-dir", str(run_dir / "ckpt")]
+                   "--token-cache", token_cache, "--ckpt-dir", str(run_dir / "ckpt")]
         entry = dict(name=name, vocab_size=vocab, context_length=context, position_encoding=position,
-                     model_size=size, command=command, status="planned")
+                     model_size=size, token_cache=token_cache, status="planned", command=command)
         manifest.append(entry)
         print(" ".join(command))
         if not args.dry_run:

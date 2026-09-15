@@ -6,6 +6,9 @@ from pathlib import Path
 
 from eval.cloze import build_cloze_examples, load_examples, split_sentences, write_jsonl
 from eval.table import build_markdown_table
+from scripts.eval_ngram import evaluate
+
+import numpy as np
 
 _CORPUS = (
     "नेपालको राजधानी काठमाडौं शहर हो। "
@@ -68,3 +71,11 @@ def test_table_reads_qa_accuracy(tmp_path):
         json.dumps(dict(task="qa_accuracy", ckpt="base", accuracy=0.75))
     )
     assert "0.750" in build_markdown_table(tmp_path)
+
+
+def test_bigram_baseline_returns_finite_metrics() -> None:
+    tokens = np.array([0, 1] * 50, dtype=np.int32)
+    metrics = evaluate(tokens, vocab_size=4, alpha=0.1)
+    assert metrics["tokens"] == 4
+    assert metrics["perplexity"] > 0
+    assert 0 <= metrics["top5_accuracy"] <= 1
