@@ -32,6 +32,7 @@ dev = [
     "ruff==0.16.7",
     "black==26.5.1",
     "mypy==1.14.1",
+    "fastapi",
     "pre-commit",
 ]
 
