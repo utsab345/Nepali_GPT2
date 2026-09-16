@@ -26,6 +26,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, cast
 
 _BENCH_DIR = Path(__file__).resolve().parents[1] / "eval" / "benchmarks"
 
@@ -175,7 +176,7 @@ def run_hf(args):
     device = torch.device(
         args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     )
-    model = model.to(device)
+    model.to(cast(Any, device))
     model.eval()
     ctx = min(getattr(model.config, "n_positions", 512), 512)
 
