@@ -60,11 +60,11 @@ def evaluate_checkpoint(
     max_new: int,
     seed: int,
 ) -> dict:
-    model, sp, cfg, device = load_model_and_tokenizer(ckpt_path, tok_path, device)
+    model, sp, cfg, dev = load_model_and_tokenizer(ckpt_path, tok_path, device)
     details = []
     for i, row in enumerate(rows):
         prompt = format_prompt(row["instruction"], row.get("input", ""))
-        text = _invoke(model, sp, cfg, device, prompt, max_new, seed + i)
+        text = _invoke(model, sp, cfg, dev, prompt, max_new, seed + i)
         item = dict(
             id=row.get("id", i),
             task=row.get("task", "unknown"),
@@ -77,7 +77,7 @@ def evaluate_checkpoint(
         )
         if row.get("distractors"):
             scores = score_candidates(
-                model, sp, cfg, device, prompt, [row["output"]] + row["distractors"]
+                model, sp, cfg, dev, prompt, [row["output"]] + row["distractors"]
             )
             item["qa_correct"] = max(scores, key=lambda c: scores[c]) == row["output"]
         details.append(item)

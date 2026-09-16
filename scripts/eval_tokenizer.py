@@ -237,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
     if not sp.load(args.tok):
         print(f"Tokenizer not found: {args.tok}")
         raise SystemExit(1)
-    adapters = [SpTokenizerAdapter(sp)]
+    adapters: list[SpTokenizerAdapter | HFTokenizerAdapter] = [SpTokenizerAdapter(sp)]
 
     # HF tokenizers.
     if args.hf_models:

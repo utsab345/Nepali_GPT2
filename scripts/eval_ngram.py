@@ -27,7 +27,7 @@ def evaluate(tokens: np.ndarray, vocab_size: int, alpha: float) -> dict[str, flo
         denominator = sum(row.values()) + alpha * vocab_size
         probability = (row[int(nxt)] + alpha) / denominator
         total_nll -= math.log(probability)
-        top = sorted(row, key=row.get, reverse=True)[:5]
+        top = sorted(row, key=lambda k: row[k], reverse=True)[:5]
         if int(nxt) in top[:1]:
             correct1 += 1
         if int(nxt) in top:

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Iterator
 
 import sentencepiece as spm
 import torch
@@ -148,7 +149,7 @@ def generate_stream(
     top_k: int = 50,
     top_p: float = 0.92,
     stop_sequences: list[str] | None = None,
-) -> list[str]:
+) -> Iterator[str]:
     """Yield generated tokens one at a time (streaming mode).
 
     Identical sampling logic to :func:`generate` but yields the decoded
