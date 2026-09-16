@@ -55,7 +55,7 @@ def _normalize(text: str) -> str:
 
 
 def _is_devanagari(ch: str) -> bool:
-    return "\u0900" <= ch <= "\u097F"
+    return "\u0900" <= ch <= "\u097f"
 
 
 class SpTokenizerAdapter:

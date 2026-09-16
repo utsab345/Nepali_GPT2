@@ -20,7 +20,7 @@ from pathlib import Path
 
 def count_devanagari(text: str) -> int:
     """Count Devanagari Unicode characters in text."""
-    return sum(1 for ch in text if "\u0900" <= ch <= "\u097F")
+    return sum(1 for ch in text if "\u0900" <= ch <= "\u097f")
 
 
 def word_count(text: str) -> int:

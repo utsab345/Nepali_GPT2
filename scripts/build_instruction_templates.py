@@ -34,7 +34,10 @@ def build(corpus: Path, output: Path, limit: int, seed: int):
             elif task == "summarization":
                 instruction, answer = "यस पाठको संक्षिप्त सारांश लेख्नुहोस्।", text
             elif task == "rewriting":
-                instruction, answer = "यस वाक्यलाई सरल नेपालीमा पुनर्लेखन गर्नुहोस्।", text
+                instruction, answer = (
+                    "यस वाक्यलाई सरल नेपालीमा पुनर्लेखन गर्नुहोस्।",
+                    text,
+                )
             else:
                 instruction, answer = "यस विषयमा एउटा अनुच्छेद लेख्नुहोस्।", text
             record = dict(
