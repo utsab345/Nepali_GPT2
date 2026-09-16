@@ -1,10 +1,12 @@
 """FastAPI inference service for NepaliGPT (roadmap Week 3).
 
 Endpoints:
-    POST /generate    — autoregressive text completion
-    POST /next_token  — top-k next-token probabilities
-    GET  /health      — liveness / readiness + model info
-    GET  /metrics     — request / latency / error counters
+    POST /generate         — autoregressive text completion
+    POST /generate/stream  — server-sent-events streaming completion
+    POST /next_token       — top-k next-token probabilities
+    POST /tokenize         — tokenizer analysis (pieces, ids, decoded)
+    GET  /health           — liveness / readiness + model info
+    GET  /metrics          — request / latency / error counters
 
 The checkpoint and tokenizer are configured through environment variables
 so the same image serves any trained model without a rebuild:
@@ -28,6 +30,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 MODEL_CKPT = os.environ.get("NEPALIGPT_CKPT", "ckpt/best.pt")
@@ -85,6 +88,10 @@ class GenerateRequest(BaseModel):
 class NextTokenRequest(BaseModel):
     prompt: str = Field(..., min_length=1, max_length=1024)
     top_n: int = Field(10, ge=1, le=100)
+
+
+class TokenizeRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=4096)
 
 
 def get_model() -> tuple[Any, Any, dict[str, Any], Any]:
@@ -161,6 +168,68 @@ def next_token_endpoint(req: NextTokenRequest) -> dict[str, Any]:
         return {
             "prompt": req.prompt,
             "predictions": [{"token": tok, "probability": prob} for tok, prob in preds],
+        }
+    except Exception as exc:  # noqa: BLE001
+        metrics.record(time.monotonic() - t0, 0, True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/generate/stream")
+def generate_stream_endpoint(req: GenerateRequest) -> StreamingResponse:
+    """Server-sent events: stream generated tokens one piece at a time."""
+
+    def event_stream():
+        try:
+            model, sp, cfg, device = get_model()
+            from nepali_gpt2.generate import generate_stream
+
+            gen = generate_stream(
+                model,
+                sp,
+                cfg,
+                device,
+                prompt=req.prompt,
+                max_new=req.max_new,
+                temperature=req.temperature,
+                top_k=req.top_k,
+                top_p=req.top_p,
+                stop_sequences=req.stop or None,
+            )
+            n = 0
+            for piece in gen:
+                if piece and piece.strip():
+                    n += 1
+                    yield f"data: {piece}\n\n"
+            metrics.record(time.monotonic() - t0, n, False)
+            yield "data: [DONE]\n\n"
+        except Exception as exc:  # noqa: BLE001
+            metrics.record(time.monotonic() - t0, 0, True)
+            yield f"data: [ERROR] {exc}\n\n"
+
+    t0 = time.monotonic()
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/tokenize")
+def tokenize_endpoint(req: TokenizeRequest) -> dict[str, Any]:
+    """Show SentencePiece tokenization (pieces, ids) and round-trip decode."""
+    t0 = time.monotonic()
+    try:
+        model, sp, cfg, device = get_model()
+        pieces = sp.encode(req.text, out_type=str)
+        ids = sp.encode(req.text, out_type=int)
+        metrics.record(time.monotonic() - t0, 0, False)
+        return {
+            "text": req.text,
+            "n_tokens": len(pieces),
+            "pieces": pieces,
+            "ids": ids,
+            "decoded": sp.decode(ids),
+            "matches_input": sp.decode(ids) == req.text,
         }
     except Exception as exc:  # noqa: BLE001
         metrics.record(time.monotonic() - t0, 0, True)

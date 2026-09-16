@@ -33,3 +33,73 @@ jobs:
 
       - name: Tests (pytest)
         run: pytest
+
+      - name: Smoke inference (generate 3 tokens)
+        run: |
+          python - <<'EOF'
+          # Build a tiny synthetic checkpoint + tokenizer to verify inference works end-to-end.
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd() / "src"))
+          import torch
+          import sentencepiece as spm
+          from nepali_gpt2.model import NepaliGPT
+          from nepali_gpt2.generate import load_model_and_tokenizer, generate
+
+          # Train a tiny SentencePiece tokenizer on a few bytes.
+          tmp = Path("ci_tmp")
+          tmp.mkdir(exist_ok=True)
+          (tmp / "corpus.txt").write_text("नेपाल एक सुन्दर देश हो। हाम्रो देशको राजधानी काठमाडौं हो।\n", encoding="utf-8")
+          spm.SentencePieceTrainer.train(
+              input=str(tmp / "corpus.txt"),
+              model_prefix=str(tmp / "tiny"),
+              vocab_size=64,
+              model_type="bpe",
+              pad_id=0, unk_id=1, bos_id=2, eos_id=3,
+              pad_piece="<pad>", unk_piece="<unk>", bos_piece="<s>", eos_piece="</s>",
+          )
+          cfg = dict(vocab_size=64, context_length=128, emb_dim=32, n_heads=2, n_layers=2,
+                     drop_rate=0.0, qkv_bias=False)
+          model = NepaliGPT(cfg)
+          torch.save({"cfg": cfg, "model": model.state_dict()}, tmp / "ckpt.pt")
+
+          m, sp, c, d = load_model_and_tokenizer(str(tmp / "ckpt.pt"), str(tmp / "tiny.model"), "cpu")
+          out = generate(m, sp, c, d, prompt="नेपाल", max_new=5)
+          assert out, "generation must be non-empty"
+          print("OK: generated:", out)
+          EOF
+
+      - name: Eval sanity (tokenizer + metric determinism)
+        run: |
+          python - <<'EOF'
+          # Tokenizer round-trip + metrics determinism on the CI tiny tokenizer.
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path.cwd() / "src"))
+          import sentencepiece as spm
+          from eval.metrics import distinct_n, repetition_rate, perplexity_from_loss
+
+          tmp = Path("ci_tmp")
+          tok = tmp / "tiny.model"
+          if not tok.exists():
+              sys.exit(0)  # skipped if the smoke job didn't run
+
+          sp = spm.SentencePieceProcessor()
+          sp.load(str(tok))
+          text = "नेपाल एक सुन्दर देश हो।"
+          pieces = sp.encode(text, out_type=str)
+          ids = sp.encode(text, out_type=int)
+          assert sp.decode(ids) == text, "tokenizer round-trip failed"
+
+          toks = [p.replace("▁", "").strip() for p in pieces if p.strip()]
+          d1 = distinct_n(toks, 1)
+          rep = repetition_rate(toks, 4)
+          assert 0.0 <= d1 <= 1.0, "distinct-1 out of range"
+          assert 0.0 <= rep <= 1.0, "repetition out of range"
+          assert perplexity_from_loss(0.0) == 1.0
+          print(f"OK: distinct-1={d1:.3f} repetition={rep:.3f} roundtrip=ok")
+          EOF
+
+      - name: Clean CI temp files
+        if: always()
+        run: rm -rf ci_tmp

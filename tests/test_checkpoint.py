@@ -40,6 +40,8 @@ def test_rejects_noncausal_saved_mask():
 def test_rejects_colliding_legacy_names():
     cfg = tiny_cfg()
     state = legacy_state(NepaliGPT(cfg))
-    state["_orig_mod.blocks.0.attn.wq.weight"] = state["_orig_mod.blocks.0.attn.Wq.weight"]
+    state["_orig_mod.blocks.0.attn.wq.weight"] = state[
+        "_orig_mod.blocks.0.attn.Wq.weight"
+    ]
     with pytest.raises(ValueError, match="Conflicting checkpoint"):
         normalize_state_dict(state, cfg)

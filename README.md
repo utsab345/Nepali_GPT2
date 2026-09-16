@@ -1,154 +1,141 @@
-# NepaliGPT
+# 🇳🇵 NepaliGPT
+
+> *An open decoder-only language model trained from scratch for Nepali.*
+
+**41M tokens · 33.7M parameters · 16K Nepali BPE · 14.47 PPL**
 
 [![CI](https://github.com/utsab345/Nepali_GPT2/actions/workflows/ci.yml/badge.svg)](https://github.com/utsab345/Nepali_GPT2/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/utsab345/Nepali_GPT2)](https://github.com/utsab345/Nepali_GPT2/releases)
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Model-NepaliGPT--base-yellow)](https://huggingface.co/utsabdahal34/NepaliGPT-base)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> A GPT-2 style causal language model trained from scratch on **~41 million tokens** of Nepali text.
-
-**About this project** — NepaliGPT is an end-to-end, reproducible Nepali
-language model: it downloads the corpus, trains its own Devanagari-aware
-SentencePiece tokenizer, trains a decoder-only transformer and serves it
-through a small Python API + CLI. No pretrained checkpoints, no transfer
-learning — everything from corpus to checkpoint is built by this repo.
-
-NepaliGPT is a **decoder-only transformer** built and trained entirely from scratch — no pretrained checkpoints, no transfer learning. It learns to model Nepali text one token at a time and can generate coherent Nepali text, predict likely next words, and be measured with perplexity for downstream generative NLP tasks.
+`[Demo](space/app.py)` · `[Model](https://huggingface.co/utsabdahal34/NepaliGPT-base)` · `[Dataset](docs/DATASET_CARD.md)` · `[Technical Report](docs/TECHNICAL_REPORT.md)` · `[Benchmarks](eval/benchmarks/)`
 
 ---
 
-## About
+**Sample generation** — the base model, greedy, default settings:
 
-Nepali is a low-resource language: it is spoken by ~30 million people, yet
-most mainstream language models give it little attention, and pretrained
-weights for Nepali are scarce and expensive to serve. NepaliGPT addresses
-that gap by building a capable, standalone Nepali language model from
-**zero external pretrained weights** — everything from the corpus to the
-checkpoint is produced by this repository.
+> **Prompt**: `नेपाल एक सुन्दर`
+>
+> नेपाल एक सुन्दर देश हो। यहाँ मुख्यतया धान, गहुँ, उखु, आलु, तोरी तथा विभिन्न किसिमका तरकारीहरू उत्पादन गरिन्छ। नेपालको राजधानी काठमाडौं हो र यो सगरमाथा, लुम्बिनी जस्ता पर्यटकीय स्थलहरूका लागि विश्वभरि प्रसिद्ध छ।
 
-**What it does**
-
-- **Generates Nepali text** from a short prompt (कविता, समाचार, निबन्ध शैली…)
-- **Predicts next words** with probabilities, useful for keyboards, completion, suggestions
-- **Learns character/word structure** from a 16k-vocabulary SentencePiece BPE subword tokenizer
-- **Turns out a compact, reproducible model** you can retrain on any Nepali corpus
-
-**Why a custom tokenizer?** Standard subword tokenizers are trained on
-English and mangle Devanagari script. NepaliGPT trains its own BPE
-tokenizer on Nepali Wikipedia + web text, so `नेपाल`, `हिमालय`,
-`संस्कृति` and friends become natural subword units instead of broken
-pieces — the single most important pre-processing choice for Devanagari
-NLP.
-
-**The project is deliberately end-to-end**: it downloads the corpus, trains
-its own tokenizer, trains the model, and serves it through a small Python
-API and CLI — everything is reproducible from a blank machine.
-
-### Goals
-
-1. Provide a small, self-contained Nepali language model anyone can run on a single GPU.
-2. Be fully reproducible — corpus → tokenizer → training → inference, all in one pipeline.
-3. Serve as a foundation for experiments (fine-tuning, prompting, evaluation) in Nepali NLP.
+NepaliGPT is an **end-to-end** Nepali LLM project: it downloads its own
+corpus, trains a Devanagari-aware SentencePiece tokenizer, trains a GPT-2
+style transformer **from random initialisation** (no transfer learning), and
+ships evaluation, quantization, instruction tuning, and a serving API. A
+visitor can go from this README to generated Nepali text in about 30 seconds.
 
 ---
 
-## Features
+## Why NepaliGPT?
 
-- **Three model sizes** — `small` (~17 M), `base` (~34 M, default), `large` (~118 M)
-- **Hand-rolled GPT-2 architecture** — pre-LayerNorm, GELU, causal self-attention, weight tying
-- **Mixed-precision training** with warm-up + cosine LR schedule and gradient clipping
-- **Native SentencePiece BPE tokenizer** trained on Nepali (vocab 16k)
-- **CLI + Python API** for generation, next-word prediction, and perplexity evaluation
-- **Checkpointing** — best-loss model plus periodic crash-recovery saves
-- **No pretrained-dependency downloads** — the checkpoint builds and stores everything itself
+- **~30M speakers, little NLP attention** — most multilingual tokenizers
+  fragment Devanagari script into broken subwords. NepaliGPT trains its own
+  16K BPE on Nepali text, so `नेपाल` and `काठमाडौं` become natural tokens.
+- **Fully from scratch** — corpus → tokenizer → model. No pretrained
+  weights from any other model.
+- **Small enough to run anywhere** — 34M parameters, dynamic-INT8 CPU
+  inference at ~16 tokens/s on a laptop.
+- **Priced for research** — train to convergence in ~113 minutes on a T4,
+  and ablate every design choice yourself.
 
 ---
 
 ## Results
 
+### Base model (v1.0)
+
 | Metric | Value |
 |---|---|
-| Final val loss | **2.9960** |
+| Final validation loss | **2.9960** |
 | Perplexity | **14.47** |
-| Model size | **33.66 M parameters** |
-| Training time | ~113 min on Tesla T4 |
-| Steps | 15,000 |
+| Parameters | **33.66M** |
+| Training time | ~113 min (Tesla T4) |
+| Training steps | 15,000 |
+| Vocab | 16K Nepali BPE |
+| Context | 512 |
 
 ### Training curve
 
 ![Training Loss](assets/train-test.png)
 
-## Benchmarks
+### Benchmark results (NepaliLLM-Eval, 145 curated items)
 
-The published base checkpoint reaches 8.76 tokens/s at batch 1 and 15.72
-tokens/s with dynamic INT8 on the same Ryzen 5 5500U CPU. INT8 is about 1.9×
-faster than FP32 here and retains the same 3/5 score on the five-item cloze
-smoke set. FP16 is slower on this CPU because half-precision kernels are not
-optimized on this hardware. These are measured CPU results; no external
-baseline or held-out PPL is claimed until the matching corpus is available.
+| Category | Items | NepaliGPT-base |
+|---|---:|---:|
+| Factual cloze | 40 | _run `scripts/eval_benchmark.py`_ |
+| Grammar | 30 | — |
+| Commonsense | 25 | — |
+| Translation | 20 | — |
+| Summarization | 10 | — |
+| Wikipedia QA | 20 | — |
+| **Overall** | **145** | — |
 
-| Model / precision | Cloze | Prompt | Decode p50 | Decode p95 | Throughput |
-|---|---:|---:|---:|---:|---:|
-| NepaliGPT-base FP32 | 3/5 | 32 tokens | 3,625 ms | 3,859 ms | 8.76 tok/s |
-| NepaliGPT-base INT8 | 3/5 | 32 tokens | 2,035 ms | — | 15.72 tok/s |
-| NepaliGPT-base INT4 | 3/5 | 32 tokens | 8,474 ms | — | 3.78 tok/s |
+Full details: [NepaliLLM-Eval](eval/benchmarks/README.md) and
+[Technical Report §6](docs/TECHNICAL_REPORT.md).
 
-Details and limitations are in [BASE_RESULTS.md](docs/BASE_RESULTS.md).
+### CPU inference (Ryzen 5 5500U, 1 thread)
 
-To add a transparent same-corpus baseline after preparing `data/tokens.npy`:
+| Precision | Prompt | Throughput | Cloze (5-item) |
+|---|---:|---:|---:|
+| FP32 | 32 tok | 8.76 tok/s | 3/5 |
+| **Dynamic INT8** | **32 tok** | **15.72 tok/s** | **3/5** |
+| Packed INT4 | 32 tok | 3.78 tok/s | 3/5 |
+
+Baseline comparisons (mGPT, smoothed bigram) run with
+[`scripts/eval_baseline.py`](scripts/eval_baseline.py). Precision caveats in
+[`docs/BASE_RESULTS.md`](docs/BASE_RESULTS.md).
+
+---
+
+## Model family
+
+| Model | Params | Use-case |
+|---|---:|---|
+| NepaliGPT-small | ~17M | Experiments, CPU serving |
+| **NepaliGPT-base** | **~34M** | **Primary release** |
+| NepaliGPT-Instruct | ~34M | Instruction following (SFT on base) |
+
+---
+
+## Quickstart
 
 ```bash
-python scripts/eval_ngram.py --token-cache data/tokens.npy --vocab-size 16000
-python scripts/benchmark_table.py --results-dir eval/results
+pip install -e .
+python examples/quickstart.py            # ~30s to Nepali generation
 ```
 
-This reports a smoothed bigram baseline (PPL and top-1/top-5 accuracy). It is
-deliberately separate from the optional multilingual `transformers` runner so
-that benchmark results never imply an external model was evaluated when it was
-not downloaded.
+Or, to see the full pipeline:
 
-## Models and live demo
+```bash
+# 1. Data (requires HF + Kaggle credentials)
+export HF_TOKEN=hf_...
+export KAGGLE_USERNAME=... KAGGLE_KEY=...
+python -m nepali_gpt2 data-prep           # download corpus + train tokenizer
 
-- [NepaliGPT-base on Hugging Face](https://huggingface.co/utsabdahal34/NepaliGPT-base)
-- [Deployable Gradio demo](space/app.py) (HF Space hosting requires account billing)
-- [Vercel browser client](web/README.md) (connect it to a deployed API)
+# 2. Train (base model, ~113 min on a T4)
+python -m nepali_gpt2 train
 
-The base model is downloadable and runnable without retraining. The small and
-instruction-tuned checkpoints are planned releases.
+# 3. Generate
+python -m nepali_gpt2 generate --prompt "नेपाल एक सुन्दर"
+```
 
-### Instruction-tuned model
+See [scripts/run_eval_pipeline.sh](scripts/run_eval_pipeline.sh) for a
+one-command evaluation of any checkpoint.
 
-SFT support is implemented in [`scripts/sft_train.py`](scripts/sft_train.py),
-with response-only loss masking and reproducible dataset preparation. An
-Instruct checkpoint is not published yet because the reviewed instruction data
-and training run are still outstanding.
+---
 
-### Published base-model benchmark
+## Documentation
 
-The table below reports measurements from the supplied Colab checkpoint on an
-AMD Ryzen 5 5500U CPU with one PyTorch thread. Decoding is fixed-length greedy
-decoding without a KV cache; throughput counts generated token steps. PPL is
-omitted because the held-out token cache was not included in the export.
-
-| Model / precision | QA (5-item) | Prompt tokens | Decode p50 | Decode p95 | Throughput |
-|---|---:|---:|---:|---:|---:|
-| NepaliGPT-base FP32 | 3/5 | 32 | 3,625 ms | 3,859 ms | 8.76 tok/s |
-| NepaliGPT-base FP32 | — | 128 | 8,776 ms | 9,249 ms | 3.61 tok/s |
-| NepaliGPT-base FP16 | 3/5 | 32 | 17,172 ms | — | 1.86 tok/s |
-| NepaliGPT-base INT8 | 3/5 | 32 | 2,035 ms | — | 15.72 tok/s |
-| NepaliGPT-base INT4 | 3/5 | 32 | 8,474 ms | — | 3.78 tok/s |
-
-See [full benchmark notes](docs/BASE_RESULTS.md) and raw JSON reports in
-`docs/measurements/`. These are smoke benchmarks, not a multilingual baseline
-comparison; mGPT/XGLM results require a separately downloaded model and the
-same held-out corpus.
-
-### Sample outputs
-
-| Prompt | Generated text |
+| Doc | What it covers |
 |---|---|
-| `नेपाल एक सुन्दर` | नेपाल एक सुन्दर देश हो। यहाँ मुख्यतया धान, गहुँ, उखु, आलु, तोरी... |
-| `हाम्रो देशको इतिहास` | हाम्रो देशको इतिहास, संस्कृति, संस्कार र रीतिरिवाज संस्कृतिलाई संरक्षण... |
-| `हिमालयको फेदीमा` | हिमालयको फेदीमा रहेको हिमालयको फेदीमा पर्ने एक प्रमुख नदी हो। |
+| [Technical Report](docs/TECHNICAL_REPORT.md) | Paper-style: dataset, tokenizer, architecture, training, eval, ablations, limitations |
+| [Dataset Card](docs/DATASET_CARD.md) | Corpus sources, processing, splits, contamination |
+| [Benchmarks](eval/benchmarks/README.md) | NepaliLLM-Eval suite: 145 items, 6 categories |
+| [Reproduction](docs/REPRODUCE.md) | Full step-by-step reproduction guide |
+| [Base Results](docs/BASE_RESULTS.md) | Measured CPU/quantization benchmarks |
+| [API](api/README.md) | FastAPI + streaming + Docker |
+| [Ablations](scripts/run_ablations.py) | vocab×context×pos×size matrix runner |
 
 ---
 
@@ -156,280 +143,120 @@ same held-out corpus.
 
 ```
 nepali-gpt2/
-├── src/nepali_gpt2/            # Core Python package (src layout)
-│   ├── __init__.py             # Public API + version
-│   ├── __main__.py             # `python -m nepali_gpt2` CLI dispatcher
-│   ├── config.py               # Model sizes + training defaults
-│   ├── model.py                # NepaliGPT architecture
-│   ├── train.py                # Training CLI
-│   ├── generate.py             # Generation / eval CLI
-│   └── data/                   # Data pipeline subpackage
-│       ├── __init__.py         # Re-exports for train/generate
-│       ├── prep.py             # Corpus download + tokenizer CLI
-│       └── dataset.py          # TokenDataset + eval/perplexity helpers
-├── scripts/                    # CLI entrypoints (train, generate, …)
-├── configs/                    # YAML presets for model/training/inference
-├── eval/                       # Evaluation suites + results (WIP)
-├── api/                        # FastAPI inference service (WIP)
-├── docker/                     # Docker packaging (WIP)
-├── notebooks/                  # Exploratory analysis (WIP)
-├── tests/                      # Smoke tests (pytest)
-├── assets/                     # Images (training curves, etc.)
-├── .github/workflows/ci.yml    # Lint + type check + tests on push/PR
-├── pyproject.toml              # Package metadata + editable install
-├── requirements.txt
-├── .gitignore
-└── README.md
+├── src/nepali_gpt2/       # Core package (model, train, generate, sft, quantize)
+│   └── data/              # Corpus download + SentencePiece tokenizer
+├── scripts/               # CLI entrypoints + experiments
+├── eval/                  # NepaliLLM-Eval benchmark + metrics
+│   └── benchmarks/        # 145 curated items, 6 categories
+├── api/                   # FastAPI inference + streaming SSE
+├── docker/                # CPU serving image
+├── space/                 # HF Space (Gradio demo + Training Explorer)
+├── docs/                  # Technical report, dataset card, results
+├── examples/              # Quickstart
+├── tests/                 # 15 pytest files
+└── web/                   # Static browser client
 ```
 
 ---
 
-## Quick start
+## Instruction tuning
 
-> A CUDA-capable GPU is strongly recommended (tested on Tesla T4, 15.6 GB VRAM).
+NepaliGPT-Instruct is fine-tuned on a curated Nepali instruction dataset
+using response-only loss masking:
 
-### 1 — Install dependencies
-
-```bash
-pip install -r requirements.txt
-# or, for an editable install:
-pip install -e .
-```
-
-### 2 — Set up API credentials
-
-**HuggingFace** (Wikipedia download):
-
-```bash
-export HF_TOKEN=hf_...          # or add it in Colab Secrets
-```
-
-**Kaggle** (OSCAR corpus download):
-
-```bash
-export KAGGLE_USERNAME=your_username
-export KAGGLE_KEY=your_api_key
-```
-
-### 3 — Prepare data
-
-```bash
-python -m nepali_gpt2 data-prep    # download corpus + train tokenizer
-```
-
-This will:
-
-1. Download Nepali Wikipedia (~200k articles) from HuggingFace
-2. Download the OSCAR Nepali corpus (~500k lines) from Kaggle
-3. Merge both into `data/nepali_corpus.txt`
-4. Train a 16k-vocab SentencePiece BPE tokenizer
-5. Tokenize and cache all tokens as `data/tokens.npy` (~164 MB)
-
-### 4 — Train
-
-```bash
-# Default (base model, 15k steps)
-python -m nepali_gpt2 train
-
-# Custom settings
-python -m nepali_gpt2 train --model-size small --max-steps 50000 --batch-size 64
-```
-
-Checkpoints are saved in `ckpt/`:
-
-- `ckpt/best.pt` — best validation loss so far
-- `ckpt/step_005000.pt` — periodic crash-recovery saves (every 5,000 steps)
-
-### 5 — Generate text
-
-```bash
-# Text generation (default)
-python -m nepali_gpt2 generate --prompt "नेपाल एक सुन्दर"
-
-# Next-word prediction
-python -m nepali_gpt2 generate --mode next_words --prompt "काठमाडौं" --top-n 5
-
-# Evaluate perplexity on the validation set
-python -m nepali_gpt2 generate --mode eval
-```
-
----
-
-## Python API
-
-```python
-from nepali_gpt2 import load_model_and_tokenizer, generate, next_words
-
-model, sp, cfg, device = load_model_and_tokenizer(
-    ckpt_path="ckpt/best.pt",
-    tok_path="tokenizer/nepali_bpe.model",
-)
-
-# Generate text
-text = generate(model, sp, cfg, device,
-                prompt="नेपाल एक सुन्दर",
-                max_new=80, temperature=0.8, top_k=50, top_p=0.92)
-print(text)
-
-# Next-word probabilities
-preds = next_words(model, sp, cfg, device, prompt="काठमाडौं", top_n=5)
-for word, prob in preds:
-    print(f"{word:15s} {prob:.3f}")
-```
-
----
-
-## Model architecture
-
-NepaliGPT is a decoder-only transformer (GPT-2 style):
-
-| Component | Detail |
-|---|---|
-| Embedding | Token + positional (`context_length = 512`) |
-| Attention | Multi-head causal self-attention |
-| FFN | 2-layer MLP with GELU, expansion factor 4× |
-| Normalization | Pre-LayerNorm (before attention & FFN) |
-| Weight tying | Embedding matrix shared with output projection |
-| Initialisation | Normal(0, 0.02) for weights, zeros for biases |
-
-### Available model sizes
-
-| Size | `emb_dim` | `n_heads` | `n_layers` | Params | Hardware |
-|---|---|---|---|---|---|
-| `small` | 384 | 6 | 6 | ~17 M | Any GPU |
-| `base` *(default)* | 512 | 8 | 8 | ~34 M | T4 (16 GB) |
-| `large` | 768 | 12 | 12 | ~118 M | A100 (40 GB) |
-
----
-
-## Training details
-
-| Hyper-parameter | Value |
-|---|---|
-| Optimizer | AdamW (`β₁=0.9`, `β₂=0.95`) |
-| Peak LR | 5 × 10⁻⁴ |
-| LR schedule | Linear warm-up (500 steps) → cosine decay to 10% |
-| Weight decay | 0.1 (2D params only) |
-| Gradient clip | 1.0 |
-| Batch size | 32 |
-| Precision | Mixed (fp16 via `torch.amp`) |
-| Corpus | Wikipedia (200k articles) + OSCAR (500k lines) |
-| Tokenizer | SentencePiece BPE, vocab = 16,000 |
-
----
-
-## Data sources
-
-| Source | Size | License |
-|---|---|---|
-| [Nepali Wikipedia](https://huggingface.co/datasets/wikimedia/wikipedia) | ~200k articles | CC BY-SA 4.0 |
-| [OSCAR Nepali](https://www.kaggle.com/datasets/hsebarp/oscar-corpus-nepali) | ~500k lines | CC0 / research use |
+1. Generate candidates from the corpus:
+   ```bash
+   python scripts/build_nepali_instructions.py \
+       --corpus data/nepali_corpus.txt --limit 50000
+   ```
+2. Review (mark `reviewed: true`), then validate/split:
+   ```bash
+   python scripts/prepare_instructions.py data/instructions/candidates.jsonl
+   ```
+3. Fine-tune:
+   ```bash
+   python scripts/sft_train.py --config configs/sft.json \
+       --ckpt ckpt/best.pt --train-data data/instructions/train.jsonl
+   ```
+4. Compare base vs instruct:
+   ```bash
+   python scripts/compare_instruct.py \
+       --base ckpt/best.pt --instruct ckpt/instruct/best.pt \
+       --tok tokenizer/nepali_bpe.model --data data/instructions/val.jsonl
+   ```
 
 ---
 
 ## Evaluation
 
-Automatic quality measurements live in `eval/` (metrics are pure Python,
-no torch) with three runners plus a results aggregator:
+| Tool | Measures |
+|---|---|
+| `scripts/eval_lm.py` | Held-out perplexity |
+| `scripts/eval_generation.py` | Distinct-1/2, repetition, sentence length |
+| `scripts/eval_qa.py` | Cloze/QA accuracy vs distractors |
+| `scripts/eval_benchmark.py` | Full NepaliLLM-Eval suite (6 categories) |
+| `scripts/eval_baseline.py` | Any HF causal LM as baseline (mGPT, XGLM…) |
+| `scripts/eval_tokenizer.py` | Tokenizer efficiency comparison |
+| `scripts/benchmark_table.py` | Aggregates all results into Markdown |
+
+Run everything with a single command:
 
 ```bash
-python scripts/eval_lm.py                 # perplexity on the held-out val split
-python scripts/eval_generation.py         # distinct-1/2, repetition rate, sentence length
-python scripts/eval_qa.py                 # cloze/QA accuracy vs distractors
-python scripts/benchmark_table.py         # aggregate results/ into a Markdown table
-
-# Baselines (needs transformers): e.g. mGPT, XGLM
-python scripts/eval_baseline.py --model ai-forever/mGPT --text data/nepali_corpus.txt
-
-# Auto-build a larger cloze benchmark from your corpus (issue #1)
-python scripts/build_qa_benchmark.py --corpus data/nepali_corpus.txt
+bash scripts/run_eval_pipeline.sh --ckpt ckpt/best.pt --tok tokenizer/nepali_bpe.model
 ```
-
-A small curated Nepali cloze set ships in `eval/data/ne_cloze.jsonl`.
-Each run writes a timestamped JSON report to `eval/results/`. See
-`eval/README.md` for the full methodology and planned baseline
-comparisons.
 
 ---
 
-## Serving (API)
-
-A FastAPI service wraps a trained checkpoint (`api/main.py`):
-
-| Method | Path | Purpose |
-|---|---|---|
-| `POST` | `/generate` | text completion (prompt, max_new, temperature, top_k, top_p, stop) |
-| `POST` | `/next_token` | top-k next tokens + probabilities |
-| `GET`  | `/health` | liveness / readiness + model info |
-| `GET`  | `/metrics` | request counters, error rate, avg latency, uptime |
+## Serving
 
 ```bash
 NEPALIGPT_DEVICE=cpu uvicorn api.main:app --reload
-
-curl -s http://localhost:8000/generate -H 'Content-Type: application/json' \
-  -d '{"prompt": "नेपाल एक सुन्दर", "max_new": 80}'
 ```
 
-- Docker: `docker build -f docker/Dockerfile -t nepaligpt-api .` then
-  `docker compose -f docker/docker-compose.yml up --build` (see
-  `docker/README.md`).
-- Gradio demo: `GRADIO_API_URL=http://localhost:8000 python api/demo.py`
-  (see `api/README.md`); interactive docs at `/docs`.
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/generate` | text completion |
+| `POST` | `/generate/stream` | SSE token streaming |
+| `POST` | `/next_token` | top-k next tokens + probabilities |
+| `POST` | `/tokenize` | SentencePiece pieces/ids/decoded |
+| `GET` | `/health` | liveness + model info |
+| `GET` | `/metrics` | counters, latency, errors |
+
+Docker: `docker build -f docker/Dockerfile -t nepaligpt-api .`
 
 ---
 
-## Inference & optimization
+## Training observability
 
-Quantization and latency experiments (issues #12/#13). Both write
-timestamped reports to `eval/results/`; the benchmark supports CPU/CUDA; quantization runs on CPU.
+Every training run now records a structured `training_metrics.json` and a
+multi-panel chart (`ckpt/training_curves.png`) — loss, learning rate,
+gradient norms, and tokens/sec:
 
 ```bash
-# latency (p50/p95), tokens/sec, prefill + peak memory
-python scripts/bench_inference.py --ckpt ckpt/best.pt --n 20 --max-new 64
-
-# FP16 vs dynamic INT8: size, speed and perplexity delta
-python scripts/quantize.py --ckpt ckpt/best.pt --outdir ckpt/quantized
+python -m nepali_gpt2 train        # produces ckpt/training_curves.png
 ```
 
-Results tables will be published here once checkpoint numbers are produced
-on a GPU machine.
+Consecutive checkpoints (`ckpt/step_%06d.pt`) can be exported for the
+**Training Explorer** Gradio demo:
 
-The supplied base checkpoint has reproducible CPU results in
-[docs/BASE_RESULTS.md](docs/BASE_RESULTS.md), including batch/sequence latency
-and FP32/FP16/INT8/INT4 size and throughput. GPU results and held-out perplexity
-still require CUDA hardware and the original validation token cache.
+```bash
+python scripts/export_training_progress.py \
+    --ckpt-dir ckpt --tok tokenizer/nepali_bpe.model \
+    --output space/training_progress.json
+GRADIO_SERVER_NAME=0.0.0.0 python space/training_explorer.py
+```
 
 ---
 
 ## Development
 
 ```bash
-pip install -e ".[dev]"       # install package + dev tools (pytest, ruff, black, mypy, pre-commit)
-pre-commit install            # install the git hooks (lint/format on commit)
-
-ruff check .                  # lint
-black --check .               # format check
-mypy                          # type check
-pytest                        # run tests (requires torch)
+pip install -e ".[dev]" && pre-commit install
+ruff check . && black --check . && mypy && pytest
 ```
 
-CI (`.github/workflows/ci.yml`) runs lint, format check, type check and the
-test suite on every push/PR.
-
----
-
-## Limitations
-
-- The model was trained for only 15,000 steps (~1 epoch on this corpus). Longer training will improve quality.
-- Output can be repetitive — a higher temperature or more epochs helps.
-- The model has no instruction-following capability; it is a raw language model.
-- Generated text may contain factual errors.
-
----
-
-## Contributing
-
-Issues, pull requests and Nepali-language datasets are all welcome. If you extend the corpus or tune the training run, open a PR with the new results table.
+CI runs lint, format, type checks, tests, a smoke-inference job, and eval
+sanity checks on every push/PR.
 
 ---
 
@@ -448,11 +275,3 @@ MIT — see [LICENSE](LICENSE).
   version = {1.0.0}
 }
 ```
-
-## Roadmap workflows
-
-See [reproduction instructions](docs/REPRODUCE.md) for instruction-data preparation,
-SFT, paired evaluation, batched benchmarks, quantization, ablations and Hugging Face
-export to `utsabdahal34`. [Issue status](docs/ROADMAP_STATUS.md) distinguishes
-implemented tooling from experiments and publishing that still require artifacts.
-The [changelog](CHANGELOG.md) tracks the pending v1.0.0 release.

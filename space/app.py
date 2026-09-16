@@ -21,7 +21,9 @@ def generate(prompt: str, max_new: int, temperature: float, top_p: float) -> str
     if not prompt.strip():
         return "कृपया एउटा prompt लेख्नुहोस्।"
     ids = torch.tensor(
-        [[TOKENIZER.bos_id()] + TOKENIZER.encode(prompt)], dtype=torch.long, device=DEVICE
+        [[TOKENIZER.bos_id()] + TOKENIZER.encode(prompt)],
+        dtype=torch.long,
+        device=DEVICE,
     )
     output = MODEL.generate(
         ids,

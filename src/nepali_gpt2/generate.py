@@ -137,6 +137,71 @@ def generate(
 
 
 @torch.no_grad()
+def generate_stream(
+    model,
+    sp,
+    cfg: dict,
+    device,
+    prompt: str = DEFAULT_PROMPT,
+    max_new: int = 80,
+    temperature: float = 0.8,
+    top_k: int = 50,
+    top_p: float = 0.92,
+    stop_sequences: list[str] | None = None,
+) -> list[str]:
+    """Yield generated tokens one at a time (streaming mode).
+
+    Identical sampling logic to :func:`generate` but yields the decoded
+    *piece* for each newly generated token instead of returning the full
+    string at once. Useful for SSE server-sent streams and progress UIs.
+    """
+    if max_new < 0:
+        raise ValueError("max_new must be non-negative")
+    if temperature <= 0:
+        raise ValueError("temperature must be greater than zero")
+    if not 0 < top_p <= 1:
+        raise ValueError("top_p must be greater than zero and at most one")
+
+    bos_id, eos_id = sp.bos_id(), sp.eos_id()
+    ctx = cfg["context_length"]
+
+    ids = torch.tensor(
+        [[bos_id] + sp.encode(prompt, out_type=int)],
+        dtype=torch.long,
+        device=device,
+    )
+
+    emitted = ""
+    for _ in range(max_new):
+        logits, _ = model(ids[:, -ctx:])
+        logits = logits[:, -1, :] / temperature
+
+        if top_k > 0:
+            v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+            logits[logits < v[:, [-1]]] = float("-inf")
+
+        if top_p < 1.0:
+            sorted_logits, sort_idx = torch.sort(logits, descending=True)
+            cum = torch.cumsum(torch.softmax(sorted_logits, -1), -1)
+            sorted_logits[cum - torch.softmax(sorted_logits, -1) > top_p] = float(
+                "-inf"
+            )
+            logits = torch.zeros_like(logits).scatter_(1, sort_idx, sorted_logits)
+
+        next_id = torch.multinomial(torch.softmax(logits, -1), 1)
+        if next_id.item() == eos_id:
+            break
+        ids = torch.cat([ids, next_id], dim=1)
+        piece = sp.id_to_piece(next_id.item())
+        emitted += piece
+        if stop_sequences and any(
+            seq in emitted.replace("▁", " ") for seq in stop_sequences
+        ):
+            break
+        yield piece.replace("▁", " ")
+
+
+@torch.no_grad()
 def next_words(
     model,
     sp,

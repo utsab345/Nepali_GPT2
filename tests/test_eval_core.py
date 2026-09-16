@@ -4,11 +4,10 @@ import json
 import random
 from pathlib import Path
 
+import numpy as np
 from eval.cloze import build_cloze_examples, load_examples, split_sentences, write_jsonl
 from eval.table import build_markdown_table
 from scripts.eval_ngram import evaluate
-
-import numpy as np
 
 _CORPUS = (
     "नेपालको राजधानी काठमाडौं शहर हो। "

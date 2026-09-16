@@ -176,10 +176,13 @@ def train(args: argparse.Namespace) -> None:
         )
 
     train_losses, val_losses, steps_logged = [], [], []
+    grad_norms, lrs_logged, tokens_per_sec_log, times_elapsed = [], [], [], []
+    gpu_mem_peak_mb = 0.0
     global_step, best_val = 0, float("inf")
 
     model.train()
     t0 = time.time()
+    step_t0 = t0
     print(
         f"\nTraining up to {args.max_steps:,} steps "
         f"(eval every {args.eval_every}, {args.eval_batches} val batches)\n"
@@ -205,7 +208,7 @@ def train(args: argparse.Namespace) -> None:
             # PyTorch recommends to avoid losing precision.
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
-            nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
+            grad_norm = nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
             scaler.step(optimizer)
             scaler.update()
 
@@ -222,12 +225,29 @@ def train(args: argparse.Namespace) -> None:
                 train_losses.append(t_loss)
                 val_losses.append(v_loss)
                 steps_logged.append(global_step)
+                grad_norms.append(
+                    grad_norm if torch.isfinite(grad_norm) else float("nan")
+                )
+                lrs_logged.append(cur_lr)
 
+                elapsed_total = (time.time() - t0) / 60
+                tokens_per_sec_log.append(
+                    args.batch_size * ctx / max(time.time() - step_t0, 1e-6)
+                )
+                times_elapsed.append(elapsed_total)
+                step_t0 = time.time()
+
+                if use_amp and torch.cuda.is_available():
+                    allocated = torch.cuda.max_memory_allocated(device) / 1e6
+                    gpu_mem_peak_mb = max(gpu_mem_peak_mb, allocated)
+                    mem_str = f" | mem={allocated:.0f}MB"
+                else:
+                    mem_str = ""
                 elapsed = (time.time() - t0) / 60
                 print(
                     f"Ep {epoch:02d} | Step {global_step:6d} | "
                     f"train={t_loss:.4f} | val={v_loss:.4f} | "
-                    f"lr={cur_lr:.2e} | {elapsed:.1f}m"
+                    f"lr={cur_lr:.2e}{mem_str} | {elapsed:.1f}m"
                 )
 
                 if v_loss < best_val:
@@ -247,8 +267,86 @@ def train(args: argparse.Namespace) -> None:
     elapsed = (time.time() - t0) / 60
     print(f"\nDone! Best val loss: {best_val:.4f} | Time: {elapsed:.1f}m")
 
+    import json
+
+    # Structured metrics for observability / Training Explorer.
+    metrics = {
+        "steps": steps_logged,
+        "train_loss": train_losses,
+        "val_loss": val_losses,
+        "grad_norm": [float(n) for n in grad_norms],
+        "learning_rate": lrs_logged,
+        "tokens_per_second": [round(t, 1) for t in tokens_per_sec_log],
+        "elapsed_minutes": [round(t, 2) for t in times_elapsed],
+        "best_val_loss": best_val,
+        "best_ppl": math.exp(best_val) if best_val < 300 else None,
+        "gpu_peak_mem_mb": round(gpu_mem_peak_mb, 1),
+        "total_steps": global_step,
+        "cfg": cfg_dict,
+        "hyperparams": {
+            "lr": args.lr,
+            "batch_size": args.batch_size,
+            "warmup_steps": args.warmup_steps,
+            "weight_decay": args.weight_decay,
+            "torch_seed": args.seed,
+        },
+    }
+    metrics_path = ckpt_dir / "training_metrics.json"
+    metrics_path.write_text(json.dumps(metrics, indent=2) + "\n")
+    print(f"Metrics saved -> {metrics_path}")
+
+    import matplotlib
     import matplotlib.pyplot as plt
 
+    matplotlib.use("Agg")
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 8))
+    fig.suptitle("NepaliGPT — Training Observability", fontsize=14)
+
+    # Panel 1: Loss curves.
+    ax = axes[0, 0]
+    ax.plot(steps_logged, train_losses, label="Train", color="steelblue")
+    ax.plot(steps_logged, val_losses, label="Val", color="tomato")
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Loss")
+    ax.set_title("Training / Validation Loss")
+    ax.legend()
+    ax.grid(alpha=0.3)
+
+    # Panel 2: Learning-rate schedule.
+    ax = axes[0, 1]
+    ax.plot(steps_logged, [lr * 1e5 for lr in lrs_logged], color="seagreen")
+    ax.set_xlabel("Step")
+    ax.set_ylabel("LR (×1e-5)")
+    ax.set_title("Learning-Rate Schedule")
+    ax.grid(alpha=0.3)
+
+    # Panel 3: Gradient norms.
+    ax = axes[1, 0]
+    ax.plot(steps_logged, grad_norms, color="darkorange")
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Gradient norm")
+    ax.set_title("Gradient Norms")
+    ax.grid(alpha=0.3)
+    if args.grad_clip and any(n > args.grad_clip for n in grad_norms):
+        ax.axhline(
+            args.grad_clip, color="red", linestyle="--", label=f"clip={args.grad_clip}"
+        )
+        ax.legend()
+
+    # Panel 4: Throughput.
+    ax = axes[1, 1]
+    ax.plot(steps_logged, tokens_per_sec_log, color="rebeccapurple")
+    ax.set_xlabel("Step")
+    ax.set_ylabel("Tokens/sec")
+    ax.set_title("Training Throughput")
+    ax.grid(alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(ckpt_dir / "training_curves.png", dpi=120)
+    print(f"Training curve panel saved -> {ckpt_dir / 'training_curves.png'}")
+
+    # Keep the simple loss.png for backward compatibility (used by README).
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(steps_logged, train_losses, label="Train", color="steelblue")
     ax.plot(steps_logged, val_losses, label="Val", color="tomato")

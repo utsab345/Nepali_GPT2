@@ -9,6 +9,7 @@ loss.png
 # ---- Generated evaluation artefacts ----
 eval/results/*.json
 eval/data/ne_cloze_auto.jsonl
+ci_tmp/
 
 # ---- Python ----
 __pycache__/

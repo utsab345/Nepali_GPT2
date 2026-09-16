@@ -1,4 +1,5 @@
 """Compatibility for the original Colab checkpoint state dictionaries."""
+
 from __future__ import annotations
 
 import torch
@@ -23,9 +24,14 @@ def normalize_state_dict(state, cfg):
             del state[mask_key]
         for old, new in (("Wq", "wq"), ("Wk", "wk"), ("Wv", "wv")):
             for suffix in ("weight", "bias"):
-                old_key, new_key = prefix + old + "." + suffix, prefix + new + "." + suffix
+                old_key, new_key = (
+                    prefix + old + "." + suffix,
+                    prefix + new + "." + suffix,
+                )
                 if old_key in state:
                     if new_key in state:
-                        raise ValueError(f"Conflicting checkpoint weights: {old_key}, {new_key}")
+                        raise ValueError(
+                            f"Conflicting checkpoint weights: {old_key}, {new_key}"
+                        )
                     state[new_key] = state.pop(old_key)
     return state

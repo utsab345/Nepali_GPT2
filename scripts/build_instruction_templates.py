@@ -16,23 +16,38 @@ TASKS = ("qa", "summarization", "rewriting", "generation")
 
 
 def build(corpus: Path, output: Path, limit: int, seed: int):
-    lines = [line.strip() for line in corpus.read_text(encoding="utf-8").splitlines() if len(line.split()) >= 8]
+    lines = [
+        line.strip()
+        for line in corpus.read_text(encoding="utf-8").splitlines()
+        if len(line.split()) >= 8
+    ]
     random.Random(seed).shuffle(lines)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", encoding="utf-8") as stream:
         for index, text in enumerate(lines[:limit]):
             task = TASKS[index % len(TASKS)]
             if task == "qa":
-                instruction, answer = "यस अनुच्छेदको मुख्य विषय के हो?", text.split("।")[0] + "।"
+                instruction, answer = (
+                    "यस अनुच्छेदको मुख्य विषय के हो?",
+                    text.split("।")[0] + "।",
+                )
             elif task == "summarization":
                 instruction, answer = "यस पाठको संक्षिप्त सारांश लेख्नुहोस्।", text
             elif task == "rewriting":
                 instruction, answer = "यस वाक्यलाई सरल नेपालीमा पुनर्लेखन गर्नुहोस्।", text
             else:
                 instruction, answer = "यस विषयमा एउटा अनुच्छेद लेख्नुहोस्।", text
-            record = dict(instruction=instruction, input=text, output=answer, task=task,
-                          source=str(corpus), source_hash=hashlib.sha256(text.encode()).hexdigest(),
-                          license="VERIFY_SOURCE_LICENSE", reviewer="", reviewed=False)
+            record = dict(
+                instruction=instruction,
+                input=text,
+                output=answer,
+                task=task,
+                source=str(corpus),
+                source_hash=hashlib.sha256(text.encode()).hexdigest(),
+                license="VERIFY_SOURCE_LICENSE",
+                reviewer="",
+                reviewed=False,
+            )
             stream.write(json.dumps(record, ensure_ascii=False) + "\n")
     print(f"Wrote {min(len(lines), limit)} unreviewed candidates to {output}")
 
