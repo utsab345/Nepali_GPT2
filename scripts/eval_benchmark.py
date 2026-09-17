@@ -37,6 +37,8 @@ BENCHMARKS = {
     "ne_translation": {"file": "ne_translation.jsonl", "task": "selection"},
     "ne_summarization": {"file": "ne_summarization.jsonl", "task": "selection"},
     "ne_wiki_qa": {"file": "ne_wiki_qa.jsonl", "task": "selection"},
+    "ne_reading": {"file": "ne_reading.jsonl", "task": "selection"},
+    "ne_continuation": {"file": "ne_continuation.jsonl", "task": "selection"},
 }
 
 
